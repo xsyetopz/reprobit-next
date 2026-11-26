@@ -102,3 +102,32 @@ The check is the predicate `reorderOk`, which [`proofs/`](../proofs) proves soun
 (`reorderOk_sound`): a reordering it accepts computes the same machine state, provided each
 instruction's footprint lists what it writes and what its writes depend on. The footprints
 come from `iced-x86`'s instruction tables.
+
+### `rename`
+
+`rename --symbol <name> --map <i:from:to,…>` renames 32-bit general registers in chosen
+instructions, numbered from 0, such as one value's web of definitions and uses, or a stretch
+where two registers trade places. `0:edx:ecx,1:edx:ecx` makes instructions 0 and 1 use `ecx`
+wherever they named `edx`, along with its `cx`, `cl`, or `ch` forms. It proposes the map that
+rebuilds the reference when both functions hold the same instructions, which differ only in
+the registers their operands name.
+
+The map is checked before anything is written:
+
+- each renamed register is named by an operand of its instruction, and neither side is `esp`;
+- no two registers an instruction uses become one;
+- the renamed instruction encodes at the same length, keeps its relocated fields, and reads and
+  writes exactly the renamed registers of the original;
+- every renamed instruction finds each input where the original's value now lives, on every
+  path that reaches it;
+- when the function leaves, the registers its caller sees hold the original's values: `eax`,
+  `edx`, `ebx`, `esp`, `ebp`, `esi`, and `edi` at a `ret`, and every general register at a tail
+  call or at the end of the code.
+
+Calls follow the i386 calling conventions: a call reads `ecx`, `edx`, and the stack, clobbers
+`eax`, `ecx`, and `edx`, and gets `ebx`, `esi`, `edi`, and `ebp` back unchanged. A function
+with a branch out of it other than a tail call, or with a jump through a table, is refused.
+Debug records stay as compiled, so a debugger may show a renamed value in its old register.
+
+The check is Lean Theorem 3 (`rename_sound`): a renamed program that passes it ends with the
+same registers the caller sees, from every state.

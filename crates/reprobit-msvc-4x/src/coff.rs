@@ -83,6 +83,16 @@ pub(crate) struct Function {
     pub(crate) barriers: BTreeSet<usize>,
 }
 
+impl Function {
+    /// The offsets within the function of its relocated fields.
+    pub(crate) fn fields(&self) -> Vec<usize> {
+        self.relocations
+            .iter()
+            .map(|relocation| relocation.offset)
+            .collect()
+    }
+}
+
 impl<'a> Coff<'a> {
     /// Parses an i386 COFF object.
     pub(crate) fn parse(bytes: &'a [u8]) -> Result<Self> {

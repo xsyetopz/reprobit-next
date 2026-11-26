@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 anyhow = "1.0.105"
-iced-x86 = { version = "1.22.0", default-features = false, features = ["std", "decoder", "instr_info"] }
+iced-x86 = { version = "1.22.0", default-features = false, features = ["std", "decoder", "encoder", "instr_info"] }
 serde_json = "1.0.154"
 
 [dev-dependencies]

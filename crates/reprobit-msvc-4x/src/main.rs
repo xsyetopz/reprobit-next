@@ -1,12 +1,15 @@
 //! `rbit-msvc-4x`, a `ReproBit` add-on for i386 COFF objects from MSVC 4.x.
-//! Its one rewrite, `schedule`, reorders a function's instructions to a
-//! declared order that keeps every dependence, for the places where the old
-//! compiler's scheduler and a newer source disagree only on order.
+//! Its rewrites change what a newer source cannot steer the old compiler
+//! to: `schedule` reorders a function's instructions to a declared order
+//! that keeps every dependence, and `rename` renames registers in chosen
+//! instructions where every value still reaches the same uses.
 //!
 //! - `rbit-msvc-4x rewrite <object> schedule --symbol <name> --order <i,j,…>`
+//! - `rbit-msvc-4x rewrite <object> rename --symbol <name> --map <i:from:to,…>`
 //! - `rbit-msvc-4x propose <built> <reference> <name>`
 
 mod coff;
+mod rename;
 mod schedule;
 
 use std::io::Write as _;
@@ -56,22 +59,48 @@ fn run(args: &[String]) -> Result<()> {
             reorder(&mut bytes, symbol, &order)?;
             fs::write(object, bytes).with_context(|| format!("cannot write {object}"))
         }
+        [
+            "rewrite",
+            object,
+            "rename",
+            "--symbol",
+            symbol,
+            "--map",
+            map,
+        ] => {
+            let map = rename::parse(map)?;
+            let mut bytes = fs::read(object).with_context(|| format!("cannot read {object}"))?;
+            let function = Coff::parse(&bytes)?.function(symbol)?;
+            let renamed = rename::apply(&function.bytes, &function.fields(), &map)?;
+            bytes[function.file..function.file + renamed.len()].copy_from_slice(&renamed);
+            fs::write(object, bytes).with_context(|| format!("cannot write {object}"))
+        }
         ["propose", built, reference, symbol] => {
-            let proposals: Vec<Vec<String>> =
-                propose(&fs::read(built)?, &fs::read(reference)?, symbol)?
-                    .map(|order| {
-                        let order: Vec<String> = order.iter().map(ToString::to_string).collect();
-                        ["schedule", "--symbol", symbol, "--order", &order.join(",")]
-                            .map(str::to_owned)
-                            .to_vec()
-                    })
-                    .into_iter()
-                    .collect();
+            let (built, reference) = (fs::read(built)?, fs::read(reference)?);
+            let (ours, theirs) = (
+                Coff::parse(&built)?.function(symbol)?,
+                Coff::parse(&reference)?.function(symbol)?,
+            );
+            let order = propose(&built, &reference, symbol)?.map(|order| {
+                let order: Vec<String> = order.iter().map(ToString::to_string).collect();
+                ("schedule", "--order", order.join(","))
+            });
+            let map = rename::derive(&ours.bytes, &theirs.bytes, &ours.fields())
+                .map(|map| ("rename", "--map", rename::format(&map)));
+            let proposals: Vec<Vec<String>> = order
+                .into_iter()
+                .chain(map)
+                .map(|(rewrite, flag, value)| {
+                    [rewrite, "--symbol", symbol, flag, &value]
+                        .map(str::to_owned)
+                        .to_vec()
+                })
+                .collect();
             writeln!(std::io::stdout(), "{}", serde_json::to_string(&proposals)?)?;
             Ok(())
         }
         _ => bail!(
-            "usage: rbit-msvc-4x rewrite <object> schedule --symbol <name> --order <i,j,…> | rbit-msvc-4x propose <built> <reference> <name>"
+            "usage: rbit-msvc-4x rewrite <object> schedule --symbol <name> --order <i,j,…> | rbit-msvc-4x rewrite <object> rename --symbol <name> --map <i:from:to,…> | rbit-msvc-4x propose <built> <reference> <name>"
         ),
     }
 }
