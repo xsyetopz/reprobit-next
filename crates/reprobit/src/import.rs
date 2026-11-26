@@ -2,6 +2,7 @@
 //! `CMake` (`CMAKE_EXPORT_COMPILE_COMMANDS`), Ninja (`-t compdb`), Meson, and
 //! Bear all write, so one importer covers every build system that emits it.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
@@ -108,8 +109,9 @@ fn step(entry: Entry, root: &Path) -> Result<Step> {
         args,
         inputs: vec![format!("source/{relative}")],
         outputs: vec![object],
-        env: std::collections::BTreeMap::new(),
+        env: BTreeMap::new(),
         prelude: None,
+        registers: BTreeMap::new(),
     })
 }
 

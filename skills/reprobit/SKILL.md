@@ -32,7 +32,9 @@ rbit --json grind --step compile.main --symbol _transform --reference-object ref
 ```
 
 Add `--accept` to write the match into `reprobit.toml`, then run `verify`. A prelude emits no
-code or data, so it never copies bytes from the original. After editing a shared header or
+code or data, so it never copies bytes from the original. For i386 objects, grind also tries
+renaming `ebx`, `esi`, and `edi`, which every calling convention preserves, and may save a
+`registers` rename beside the prelude when only register allocation differs. After editing a shared header or
 other source, `rbit --json repair` drops each saved prelude the build no longer needs.
 
 To start from an existing CMake, Ninja, Meson, or Bear build, `rbit import

@@ -135,19 +135,19 @@ pub(super) fn grind(dir: &Path, wanted: &Search) -> Result<Outcome> {
         (_, true) => format!("{symbol} already matches; nothing to change"),
         (Some(found), _) if outcome.accepted => {
             format!(
-                "Saved prelude {} to step {step}; run `rbit verify`",
-                search::describe(found)
+                "Saved {} to step {step}; run `rbit verify`",
+                search::describe_match(found)
             )
         }
         (Some(found), _) => format!(
-            "Found prelude {} after {} candidates. Save it with:\n  rbit grind {} --step {step} --symbol {symbol} --reference-object {} --accept",
-            search::describe(found),
+            "Found {} after {} candidates. Save it with:\n  rbit grind {} --step {step} --symbol {symbol} --reference-object {} --accept",
+            search::describe_match(found),
             outcome.tried,
             dir.display(),
             reference_object.display()
         ),
         (None, false) => format!(
-            "No prelude matched {symbol} in {} candidates; raise --limit or try other families",
+            "Nothing matched {symbol} in {} candidates; raise --limit or try other families",
             outcome.tried
         ),
     };

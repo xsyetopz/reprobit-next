@@ -46,7 +46,7 @@ spelled depends on the runner; see [runners](runners.md). Spelling them the same
 every machine is what keeps paths a compiler embeds in its output reproducible.
 
 `rbit build` reuses a step's outputs when its program, compiler content, arguments,
-environment, prelude, inputs, headers, and runner are unchanged. `rbit verify` never uses that cache.
+environment, prelude, register renames, inputs, headers, and runner are unchanged. `rbit verify` never uses that cache.
 
 ### Importing steps
 
@@ -110,6 +110,28 @@ the numbering the same way. `rbit repair` rebuilds each step that has a prelude 
 and removes the prelude from `reprobit.toml` only when every target still matches. When
 targets differ even with the preludes, it changes nothing and points at `rbit diff` and
 `rbit grind`.
+
+## Register renames
+
+Compilers settle ties in register allocation differently, so an i386 function can match
+except that two registers trade places. A step may rename registers in a function of its
+object after it compiles, by symbol:
+
+```toml
+registers = { _transform = { esi = "edi", edi = "esi" } }
+```
+
+A rename permutes `ebx`, `esi`, and `edi`, which every i386 calling convention preserves, so
+the function's behaviour cannot change: its saves and restores are renamed with its uses.
+ELF objects leave `ebx` out, because position-independent code calls through the PLT with
+the GOT address in it. The rename refuses a function it cannot rewrite in place: an
+instruction that uses a renamed register without naming it, such as `rep movsd`, a byte
+register such as `bl` whose new register has none, an encoding whose length would change, a
+relocated field that would change, or a jump through a table, whose data may follow the
+code. Debug records that name registers keep their names.
+
+`rbit grind` tries every rename on each candidate prelude, so it finds a prelude and a rename
+together; `--family registers` alone tries renames without a new prelude.
 
 ## Lock
 

@@ -1,6 +1,8 @@
 //! `rbit grind`: a bounded search for the declaration-only prelude that makes
 //! one function compile to the reference bytes. Candidates are tried from
 //! the smallest rendered prelude up, so the first match is the cheapest one.
+//! Each i386 candidate is also tried with every register rename, because a
+//! prelude that fixes everything but register allocation is a match too.
 
 use std::fs;
 use std::path::Path;
@@ -11,6 +13,7 @@ use serde::Serialize;
 use crate::build;
 use crate::catalog::Catalog;
 use crate::project::{Loaded, Prelude};
+use crate::rewrite::{self, Registers};
 use crate::runner::{Mode, Stage};
 use crate::ui;
 use crate::{binary, verify};
@@ -24,10 +27,19 @@ pub(crate) struct Outcome {
     pub(crate) tried: usize,
     /// Whether the step already matches without a change.
     pub(crate) already_matches: bool,
-    /// The cheapest matching prelude, if any.
-    pub(crate) found: Option<Prelude>,
+    /// The cheapest match, if any.
+    pub(crate) found: Option<Match>,
     /// Whether `found` was written to `reprobit.toml`.
     pub(crate) accepted: bool,
+}
+
+/// A prelude and register rename that make a function match.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Match {
+    /// The prelude, or `None` to compile without one.
+    pub(crate) prelude: Option<Prelude>,
+    /// Registers renamed after the compile; empty for none.
+    pub(crate) registers: Registers,
 }
 
 /// Every candidate in the given families, smallest rendering first.
@@ -70,16 +82,8 @@ pub(crate) fn grind(
         step.inputs.iter().all(|input| input.starts_with("source/")),
         "step {step_id} reads earlier outputs; grind a compile step"
     );
-    let object = step
-        .outputs
-        .iter()
-        .find(|output| {
-            Path::new(output)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("obj") || extension == "o")
-        })
-        .with_context(|| format!("step {step_id} writes no .obj or .o file"))?
-        .clone();
+    let object = step.object()?.to_owned();
+    let renames = families.is_empty() || families.iter().any(|family| family == "registers");
     let reference = fs::read(loaded.root.join(reference_object))
         .with_context(|| format!("cannot read {}", reference_object.display()))?;
     let wanted = binary::function(&reference, symbol).context("in the reference object")?;
@@ -112,16 +116,21 @@ pub(crate) fn grind(
         found: None,
         accepted: false,
     };
-    let current = step.prelude.clone();
-    let queue = std::iter::once(current.clone()).chain(
+    let current = Match {
+        prelude: step.prelude.clone(),
+        registers: step.registers.get(symbol).cloned().unwrap_or_default(),
+    };
+    let current_prelude = current.prelude.clone();
+    let queue = std::iter::once(current_prelude.clone()).chain(
         candidates(families)
             .into_iter()
-            .filter(|candidate| Some(candidate) != current.as_ref())
+            .filter(|candidate| Some(candidate) != current_prelude.as_ref())
             .map(Some),
     );
     for candidate in queue.take(limit.saturating_add(1)) {
         let mut trial = step.clone();
         trial.prelude.clone_from(&candidate);
+        trial.registers.remove(symbol);
         outcome.tried += 1;
         ui::note(&format!(
             "[{}] {}",
@@ -132,18 +141,39 @@ pub(crate) fn grind(
         ));
         build::run_step(loaded, &catalog, &compiler, &stage, &trial, &headers, true)?;
         let built = fs::read(stage.build().join(&object))?;
-        if binary::function(&built, symbol).is_ok_and(|function| function == wanted) {
-            if outcome.tried == 1 {
+        let Ok(function) = binary::function(&built, symbol) else {
+            continue;
+        };
+        let registers = if function == wanted {
+            Some(Registers::new())
+        } else if renames && function.relocations == wanted.relocations {
+            let allowed = rewrite::renamable(&built).unwrap_or_default();
+            rewrite::permutations(allowed)
+                .into_iter()
+                .find(|registers| {
+                    rewrite::rename(&function, registers, allowed)
+                        .is_ok_and(|bytes| bytes == wanted.bytes)
+                })
+        } else {
+            None
+        };
+        if let Some(registers) = registers {
+            let found = Match {
+                prelude: candidate,
+                registers,
+            };
+            if found == current {
                 outcome.already_matches = true;
             } else {
-                outcome.found = candidate;
+                outcome.found = Some(found);
             }
             break;
         }
     }
     stage.finish();
     if accept && let Some(found) = &outcome.found {
-        loaded.set_prelude(step_id, Some(found))?;
+        loaded.set_prelude(step_id, found.prelude.as_ref())?;
+        loaded.set_registers(step_id, symbol, &found.registers)?;
         outcome.accepted = true;
     }
     Ok(outcome)
@@ -202,6 +232,23 @@ pub(crate) fn repair(loaded: &Loaded) -> Result<Repair> {
         kept,
         identical,
     })
+}
+
+/// A one-line description of a match.
+pub(crate) fn describe_match(found: &Match) -> String {
+    let prelude = found
+        .prelude
+        .as_ref()
+        .map_or_else(|| "no prelude".to_owned(), describe);
+    if found.registers.is_empty() {
+        return prelude;
+    }
+    let renames: Vec<String> = found
+        .registers
+        .iter()
+        .map(|(from, to)| format!("{from}->{to}"))
+        .collect();
+    format!("{prelude}, registers {}", renames.join(" "))
 }
 
 /// A one-line description of a prelude.

@@ -9,6 +9,8 @@ use anyhow::{Context, Result, bail, ensure};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::rewrite::Registers;
+
 /// The project file name.
 pub(crate) const FILE: &str = "reprobit.toml";
 /// The lock that pins each tool's installed content.
@@ -153,6 +155,27 @@ pub(crate) struct Step {
     /// reviewed compiler-state adjustment `rbit grind` finds.
     #[serde(default)]
     pub(crate) prelude: Option<Prelude>,
+    /// Registers renamed in a function of the step's object after it
+    /// compiles, by symbol: `{ _transform = { esi = "edi", edi = "esi" } }`.
+    /// A rename permutes `ebx`, `esi`, and `edi` in an i386 function, which
+    /// every calling convention preserves, so behaviour cannot change.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) registers: BTreeMap<String, Registers>,
+}
+
+impl Step {
+    /// The `.obj` or `.o` file the step writes.
+    pub(crate) fn object(&self) -> Result<&str> {
+        self.outputs
+            .iter()
+            .find(|output| {
+                Path::new(output).extension().is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("obj") || extension == "o"
+                })
+            })
+            .map(String::as_str)
+            .with_context(|| format!("step {} writes no .obj or .o file", self.id))
+    }
 }
 
 /// A declaration-only prelude. Every family emits declarations that produce
@@ -260,6 +283,66 @@ impl Loaded {
     /// Rewrites one step's prelude in `reprobit.toml`, or removes it when
     /// `None`, keeping the rest of the file, comments included, as it was.
     pub(crate) fn set_prelude(&self, id: &str, prelude: Option<&Prelude>) -> Result<()> {
+        self.edit_step(id, |step| {
+            match prelude {
+                None => {
+                    step.remove("prelude");
+                }
+                Some(prelude) => {
+                    let value: toml_edit::DocumentMut = toml::to_string(&Wrapper {
+                        prelude: prelude.clone(),
+                    })?
+                    .parse()?;
+                    let mut inline = value["prelude"]
+                        .as_table()
+                        .context("prelude table")?
+                        .clone()
+                        .into_inline_table();
+                    inline.fmt();
+                    step["prelude"] = toml_edit::value(inline);
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Sets the registers renamed in one function of a step, or removes the
+    /// rename when `registers` is empty.
+    pub(crate) fn set_registers(
+        &self,
+        id: &str,
+        symbol: &str,
+        registers: &Registers,
+    ) -> Result<()> {
+        self.edit_step(id, |step| {
+            let table = step
+                .entry("registers")
+                .or_insert_with(|| toml_edit::value(toml_edit::InlineTable::new()))
+                .as_inline_table_mut()
+                .context("registers must be an inline table")?;
+            if registers.is_empty() {
+                table.remove(symbol);
+            } else {
+                let mut map: toml_edit::InlineTable = registers
+                    .iter()
+                    .map(|(from, to)| (from.as_str(), toml_edit::Value::from(to.as_str())))
+                    .collect();
+                map.fmt();
+                table.insert(symbol, map.into());
+            }
+            table.fmt();
+            if table.is_empty() {
+                step.remove("registers");
+            }
+            Ok(())
+        })
+    }
+
+    fn edit_step(
+        &self,
+        id: &str,
+        edit: impl FnOnce(&mut toml_edit::Table) -> Result<()>,
+    ) -> Result<()> {
         let path = self.root.join(FILE);
         let mut document: toml_edit::DocumentMut = fs::read_to_string(&path)?.parse()?;
         let steps = document["step"]
@@ -269,24 +352,7 @@ impl Loaded {
             .iter_mut()
             .find(|step| step["id"].as_str() == Some(id))
             .with_context(|| format!("no step {id}"))?;
-        match prelude {
-            None => {
-                step.remove("prelude");
-            }
-            Some(prelude) => {
-                let value: toml_edit::DocumentMut = toml::to_string(&Wrapper {
-                    prelude: prelude.clone(),
-                })?
-                .parse()?;
-                let mut inline = value["prelude"]
-                    .as_table()
-                    .context("prelude table")?
-                    .clone()
-                    .into_inline_table();
-                inline.fmt();
-                step["prelude"] = toml_edit::value(inline);
-            }
-        }
+        edit(step)?;
         fs::write(path, document.to_string())?;
         Ok(())
     }
