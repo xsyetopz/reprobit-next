@@ -160,9 +160,34 @@ Addition and multiplication commute exactly, also after x87 rounding. The one di
 NaN payloads: when both operands are NaNs, which payload the result carries can depend on
 which one was loaded first.
 
+### `region`
+
+`region --symbol <name> --rewrite <i,j,…[/i:from:to,…]>` reorders one straight run of
+instructions and renames registers in it at once, for runs where neither `schedule` nor
+`rename` alone keeps the values. `1,0,2/0:eax:ecx,1:ecx:eax` turns `mov eax, a; mov ecx, b;
+add eax, ecx` into `mov eax, b; mov ecx, a; add eax, ecx`: the operands trade registers, the sum
+stays in `eax`, and `ecx` and the flags end different. The order is a permutation of the run's
+indices, and the renames, in `rename`'s syntax, name instructions by their original index.
+
+Both runs execute symbolically from one start state. A value is a term over that state: an
+operation the simulator does not interpret is a function of its code and inputs, sums are kept
+as sorted lists with a constant, and the two operands of `add`, `imul`, `and`, `or`, `xor`, and
+`test` are sorted, since they commute. A load sees the stores before it whose addresses may
+overlap its own; addresses that differ only by a constant are apart when the gap covers the
+lower access. Memory and the x87 state must end the same. The registers and flags the runs leave
+different are the run's clobbers, and the function must pass the correspondence check below
+with the run as one point. The run holds no branch or call, control enters it only at its
+first instruction, each renamed instruction keeps its length, and relocated fields keep their
+bytes and move with their instruction. `esp` is never renamed.
+
+`propose` offers a region when no single `schedule`, `rename`, or `exchange` rebuilds the
+reference. It takes the span between the first and last instructions that differ, matches each
+of the reference's instructions there to an unused one of the same form and displacement, and
+grows the run over the instructions after it until the values it leaves different are dead.
+
 ### The correspondence check
 
-`rename` and `exchange` share one check, Lean Theorem 3 (`rename_sound`). For every
+`rename`, `exchange`, and `region` share one check, Lean Theorem 3 (`rename_sound`). For every
 instruction it computes which new register or flag holds which original value, starting from
 the original values at the function's start and at every place another section's relocation
 names, and joining the paths that meet. It then requires:

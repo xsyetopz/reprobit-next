@@ -2,6 +2,7 @@
 //! Behaviour of the add-on's rewrites and proposals, through its binary.
 
 mod exchange;
+mod region;
 mod rename;
 mod schedule;
 

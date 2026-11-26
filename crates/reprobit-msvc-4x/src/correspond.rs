@@ -18,8 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Context, Result, bail, ensure};
 use iced_x86::{
-    Decoder, DecoderOptions, FlowControl, Instruction, InstructionInfoFactory, Mnemonic, OpAccess,
-    OpKind, Register,
+    ConstantOffsets, Decoder, DecoderOptions, FlowControl, Instruction, InstructionInfoFactory,
+    Mnemonic, OpAccess, OpKind, Register,
 };
 
 use crate::coff::Function;
@@ -76,6 +76,13 @@ pub(crate) fn decode_at(bytes: &[u8], ip: u64) -> Result<Instruction> {
         [one] if !one.is_invalid() => Ok(*one),
         _ => bail!("the bytes at {ip:#x} do not decode as one instruction"),
     }
+}
+
+/// Where the displacement and immediates of the one instruction `bytes` start.
+pub(crate) fn constants(bytes: &[u8]) -> ConstantOffsets {
+    let mut decoder = Decoder::new(32, bytes, DecoderOptions::NONE);
+    let instruction = decoder.decode();
+    decoder.get_constant_offsets(&instruction)
 }
 
 /// The relocated fields, from `fields`, that start inside `instruction`.

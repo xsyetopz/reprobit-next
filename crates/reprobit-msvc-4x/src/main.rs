@@ -2,19 +2,22 @@
 //! Its rewrites change what a newer source cannot steer the old compiler
 //! to: `schedule` reorders a function's instructions to a declared order
 //! that keeps every dependence, `rename` renames registers in chosen
-//! instructions where every value still reaches the same uses, and
-//! `exchange` swaps operands where the old compiler picked the other of two
-//! equal forms.
+//! instructions where every value still reaches the same uses, `exchange`
+//! swaps operands where the old compiler picked the other of two equal
+//! forms, and `region` reorders and renames a straight run at once, proved
+//! by simulating both runs.
 //!
 //! - `rbit-msvc-4x rewrite <object> schedule --symbol <name> --order <i,j,…>`
 //! - `rbit-msvc-4x rewrite <object> rename --symbol <name> --map <i:from:to,…>`
 //! - `rbit-msvc-4x rewrite <object> exchange --symbol <name> --at <i[:fields],…>`
+//! - `rbit-msvc-4x rewrite <object> region --symbol <name> --rewrite <i,j,…[/i:from:to,…]>`
 //! - `rbit-msvc-4x propose <built> <reference> <name>`
 
 mod coff;
 mod correspond;
 mod exchange;
 mod layout;
+mod region;
 mod rename;
 mod schedule;
 
@@ -41,7 +44,7 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "usage: rbit-msvc-4x rewrite <object> <rewrite>… | rbit-msvc-4x propose <built> <reference> <name>, where each <rewrite> is schedule --symbol <name> --order <i,j,…>, rename --symbol <name> --map <i:from:to,…>, or exchange --symbol <name> --at <i[:fields],…>";
+const USAGE: &str = "usage: rbit-msvc-4x rewrite <object> <rewrite>… | rbit-msvc-4x propose <built> <reference> <name>, where each <rewrite> is schedule --symbol <name> --order <i,j,…>, rename --symbol <name> --map <i:from:to,…>, exchange --symbol <name> --at <i[:fields],…>, or region --symbol <name> --rewrite <i,j,…[/i:from:to,…]>";
 
 /// How many rewrites a proposal chains at most.
 const CHAIN: usize = 3;
@@ -94,6 +97,10 @@ fn apply(bytes: &mut Vec<u8>, rewrite: &[&str]) -> Result<()> {
             *bytes = rename::apply(bytes, &function, &rename::parse(value)?)?;
             return Ok(());
         }
+        ("region", "--rewrite") => {
+            *bytes = region::apply(bytes, &function, &region::parse(value)?)?;
+            return Ok(());
+        }
         ("exchange", "--at") => exchange::apply(&function, &exchange::parse(value)?)?,
         _ => bail!(USAGE),
     };
@@ -140,10 +147,15 @@ fn derive(built: &[u8], reference: &[u8], symbol: &str, loose: bool) -> Result<V
         .map(|map| ("rename", "--map", rename::format(&map)));
     let sites = exchange::derive(&ours, &theirs.bytes, loose)
         .map(|sites| ("exchange", "--at", exchange::format(&sites)));
-    Ok(order
+    let mut found: Vec<_> = order.into_iter().chain(map).chain(sites).collect();
+    if found.is_empty() && !loose {
+        found.extend(
+            region::derive(built, symbol, &ours, &theirs.bytes)
+                .map(|region| ("region", "--rewrite", region::format(&region))),
+        );
+    }
+    Ok(found
         .into_iter()
-        .chain(map)
-        .chain(sites)
         .map(|(rewrite, flag, value)| {
             [rewrite, "--symbol", symbol, flag, &value]
                 .map(str::to_owned)
