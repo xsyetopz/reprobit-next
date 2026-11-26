@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Catalog",
+  "description": "A whole catalog document.",
+  "type": "object",
+  "properties": {
+    "collections": {
+      "description": "Families of tools that share one fetch template, such as decomp.me's\ncompiler images. Each member becomes the tool `<collection>/<platform>/<name>`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Collection"
+      },
+      "default": {}
+    },
+    "tools": {
+      "description": "Tools keyed by id, such as `objdiff-cli` or `msvc-4.2`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Tool"
+      },
+      "default": {}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Collection": {
+      "description": "A family of tools built from one template.",
+      "type": "object",
+      "properties": {
+        "default-runs": {
+          "description": "Where members run when `runs` does not name their platform. `detect`\nreads the installed executables' formats.",
+          "type": "string",
+          "default": "host"
+        },
+        "force-include": {
+          "description": "Force-include arguments keyed by platform, as in [`Tool::force_include`].",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {}
+        },
+        "homepage": {
+          "description": "Upstream home page.",
+          "type": "string",
+          "default": ""
+        },
+        "license": {
+          "description": "License note shared by the members.",
+          "type": "string",
+          "default": ""
+        },
+        "oci": {
+          "description": "OCI image template with `{platform}` and `{name}`.",
+          "type": "string"
+        },
+        "platforms": {
+          "description": "Member names keyed by target platform, such as `ps2 = [\"ee-gcc2.95.3-136\"]`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "runs": {
+          "description": "Where members run, keyed by platform; the rest use `default-runs`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "split": {
+          "description": "Members published as one image per host OS, keyed by `platform/name`:\nthe OS names (`linux`, `darwin`) appended to the image path. macOS\nhosts take `darwin` when it is listed; every other host takes `linux`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {}
+        },
+        "strip": {
+          "description": "Leading directory inside each image, with the same placeholders.",
+          "type": "string",
+          "default": ""
+        },
+        "summary": {
+          "description": "One line on where the members come from.",
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "oci",
+        "platforms"
+      ]
+    },
+    "Get": {
+      "description": "One fetch. Exactly one of `url`, `git`, `oci`, `pypi`, or `npm` is set.",
+      "type": "object",
+      "properties": {
+        "as": {
+          "description": "File name for a single-file `url`; defaults to the URL's last segment.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git": {
+          "description": "A git repository, fetched shallowly at `rev`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "description": "Host platforms this fetch applies to, such as `macos-aarch64`; empty means all.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "npm": {
+          "description": "An npm package installed into a private prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "oci": {
+          "description": "An OCI image such as `ghcr.io/owner/name`; every layer is unpacked.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pick": {
+          "description": "Paths to copy from the fetched tree; `from = \"to\"`. Empty copies everything.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "pypi": {
+          "description": "A Python requirement installed into a private virtual environment.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reference": {
+          "description": "Image tag, or the `sha256:` manifest digest to pin.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "rev": {
+          "description": "The full commit for `git`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "description": "SHA-256 of the downloaded `url`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "strip": {
+          "description": "Leading directory to drop from archive and image entries.",
+          "type": "string",
+          "default": ""
+        },
+        "url": {
+          "description": "A zip, a plain, gzip, or xz tar, or a single file, recognized by content.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Patch": {
+      "description": "A byte patch whose preimage must match before it is applied.",
+      "type": "object",
+      "properties": {
+        "file": {
+          "description": "File relative to the install root.",
+          "type": "string"
+        },
+        "from": {
+          "description": "Expected bytes, hex.",
+          "type": "string"
+        },
+        "offset": {
+          "description": "Byte offset.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "to": {
+          "description": "Replacement bytes, hex, the same length as `from`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "offset",
+        "from",
+        "to"
+      ]
+    },
+    "Tool": {
+      "description": "One downloadable tool or compiler.",
+      "type": "object",
+      "properties": {
+        "bin": {
+          "description": "Command names mapped to paths inside the install.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "env": {
+          "description": "Environment for the tool's commands. `{toolchain}` and `{temp}` expand\nto the compiler-visible spellings of those roots.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "force-include": {
+          "description": "Arguments that force-include a header, with `{}` for its path, such as\n`[\"/FI{}\"]` for MSVC or `[\"-include\", \"{}\"]` for GCC.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "get": {
+          "description": "Fetches, applied in order into one install directory.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Get"
+          }
+        },
+        "homepage": {
+          "description": "Upstream home page.",
+          "type": "string",
+          "default": ""
+        },
+        "kind": {
+          "description": "`compiler`, `tool`, or `runtime` (something other tools run on, like Wine).",
+          "type": "string",
+          "default": "tool"
+        },
+        "license": {
+          "description": "SPDX expression, or `proprietary` for redistributed vendor compilers.",
+          "type": "string",
+          "default": ""
+        },
+        "needs": {
+          "description": "Commands that must be on `PATH`, such as `java` or `node`.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "patch": {
+          "description": "Byte patches with a checked preimage, applied after every fetch.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Patch"
+          }
+        },
+        "runs": {
+          "description": "Where the tool's executables run: `host` (native for the downloaded\nplatform), `windows` (Win32 programs: Wine, wibo, or Docker off\nWindows), `linux-x86_64` or `linux-i386` (Docker off Linux), or `detect` (read\nfrom the installed executables' formats).",
+          "type": "string",
+          "default": "host"
+        },
+        "summary": {
+          "description": "One line on what it is for.",
+          "type": "string",
+          "default": ""
+        },
+        "tags": {
+          "description": "Targets and topics, such as `ps2`, `gc`, `x86`, `diff`.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "verify": {
+          "description": "SHA-256 of files that must match after install, keyed by relative path.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "version": {
+          "description": "Upstream version this entry pins.",
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

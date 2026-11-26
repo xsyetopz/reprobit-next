@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project",
+  "description": "A whole project file.",
+  "type": "object",
+  "properties": {
+    "headers": {
+      "description": "File extensions whose contents every compile step depends on, such as\nheaders no step lists as an input.",
+      "type": "array",
+      "default": [
+        "h",
+        "hh",
+        "hpp",
+        "hxx",
+        "inc",
+        "inl"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "name": {
+      "description": "A short name for reports.",
+      "type": "string"
+    },
+    "paths": {
+      "description": "The paths the compiler sees. Fixed spellings keep paths that a\ncompiler writes into its output identical on every machine. Without\nthis table, Win32 compilers under Wine see `R:\\source`, `R:\\build`,\n`R:\\toolchain`, and `R:\\Users\\reprobit\\AppData\\Local\\Temp`; others\nsee `/source`, `/build`, `/toolchain`, and `/tmp`.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Paths"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "state": {
+      "description": "Local, ignored working state: builds, caches, and reports.",
+      "type": "string",
+      "default": ".reprobit"
+    },
+    "step": {
+      "description": "Producer steps in run order.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Step"
+      }
+    },
+    "target": {
+      "description": "Binaries to reproduce.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Target"
+      }
+    },
+    "toolchain": {
+      "description": "The compiler and the tools its steps call.",
+      "$ref": "#/$defs/Toolchain"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "toolchain"
+  ],
+  "$defs": {
+    "Paths": {
+      "description": "Compiler-visible roots.",
+      "type": "object",
+      "properties": {
+        "build": {
+          "description": "Where outputs appear.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Where the project's sources appear, such as `R:\\source` or `/src`.",
+          "type": "string"
+        },
+        "temp": {
+          "description": "The temporary directory the compiler is given.",
+          "type": "string"
+        },
+        "toolchain": {
+          "description": "Where the compiler's own files appear.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "build",
+        "toolchain",
+        "temp"
+      ]
+    },
+    "Prelude": {
+      "description": "A declaration-only prelude. Every family emits declarations that produce\nno code, data, or linker directives; they only steer compiler state.",
+      "oneOf": [
+        {
+          "description": "`classes` classes sharing `functions` member declarations.",
+          "type": "object",
+          "properties": {
+            "classes": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "family": {
+              "type": "string",
+              "const": "shape"
+            },
+            "functions": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "family",
+            "classes",
+            "functions"
+          ]
+        },
+        {
+          "description": "A grid of classes with `functions` unused inline members each.",
+          "type": "object",
+          "properties": {
+            "classes": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "family": {
+              "type": "string",
+              "const": "pad"
+            },
+            "functions": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "family",
+            "classes",
+            "functions"
+          ]
+        },
+        {
+          "description": "`count` forward class declarations.",
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "family": {
+              "type": "string",
+              "const": "forward"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "family",
+            "count"
+          ]
+        },
+        {
+          "description": "`count` extern object declarations.",
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "family": {
+              "type": "string",
+              "const": "extern"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "family",
+            "count"
+          ]
+        }
+      ]
+    },
+    "Step": {
+      "description": "One producer invocation.",
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Arguments. `${SOURCE}`, `${BUILD}`, `${TOOLCHAIN}`, and `${TEMP}`\nexpand to the compiler-visible roots.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "description": "Extra environment, with the same placeholders as `args`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "Stable id, such as `compile.transform`.",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Files read, as `source/…` or `build/…` (an earlier step's output).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "outputs": {
+          "description": "Files written, relative to the build root.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "prelude": {
+          "description": "Declaration-only text force-included before the source: the\nreviewed compiler-state adjustment `rbit grind` finds.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Prelude"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "program": {
+          "description": "A command of the compiler or of a listed tool: `cl`, `objdiff-cli:objdiff-cli`,\nor a path inside the compiler such as `Bin/CL.EXE`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "program"
+      ]
+    },
+    "Target": {
+      "description": "One binary to reproduce.",
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "description": "The rebuilt file, relative to the build root.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable id, such as `program`.",
+          "type": "string"
+        },
+        "normalize": {
+          "description": "Metadata normalizations applied to both sides before comparing:\n`pe-timestamps`, `pe-checksum`, or `build-id`. Each clears only fields\na linker fills from the clock or a random source.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "reference": {
+          "description": "The original file, relative to the project. Project-owned and never\nredistributed; it is read only by verification.",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "SHA-256 the reference must have after `normalize`, so a wrong\noriginal is caught before any comparison.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "stamp": {
+          "description": "Values written into the built artifact after the last step, such as\n`{ pe-timestamp = 0x3f3a5c1e }` for the original's link time. Unlike\n`normalize`, the artifact itself then matches. Each value is declared\nhere for review; nothing is read from the reference.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "artifact",
+        "reference"
+      ]
+    },
+    "Toolchain": {
+      "description": "The tools a project builds with.",
+      "type": "object",
+      "properties": {
+        "compiler": {
+          "description": "Catalog id of the compiler, such as `msvc-4.2` or `decompme/ps2/ee-gcc2.95.3-136`.",
+          "type": "string"
+        },
+        "runner": {
+          "description": "`auto`, `native`, `wine`, `wibo`, or `docker`.",
+          "type": "string",
+          "default": "auto"
+        },
+        "runs": {
+          "description": "Overrides where the compiler runs (`host`, `windows`, `linux-x86_64`, `linux-i386`)\nwhen the catalog's platform-wide guess is wrong for this compiler.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "tools": {
+          "description": "Other catalog tools steps may call, by id.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "compiler"
+      ]
+    }
+  }
+}

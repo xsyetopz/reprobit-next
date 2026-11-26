@@ -1,0 +1,5 @@
+# Written by `rbit setup`. Pins the exact installed content of each tool.
+
+[tool."msvc-4.2"]
+version = "4.2"
+tree = "3c453ff0e462da7f2c27e1eaeb5dc443efa0afbca3c862136d4d24c5c49ca94d"

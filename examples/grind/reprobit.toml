@@ -1,28 +1,29 @@
-schema_version = 3
-project_id = "grind"
-state_dir = ".reprobit-state"
-
-[build]
-kind = "producer-graph"
+#:schema ../../schemas/project.schema.json
+# One function, one byte away from its reference. `rbit grind` finds the
+# declaration-only prelude that closes the gap; see README.md.
+name = "grind"
 
 [toolchain]
-adapter = "classic-msvc"
-profile = "msvc_4_2"
-lock_file = "reprobit/toolchain.lock.json"
+compiler = "msvc-4.2"
 
-[paths]
-id = "dos-stable-v1"
-source = "R:\\source"
-build = "R:\\build"
-toolchain = "R:\\toolchain"
-
-[verifier]
-kind = "literal"
-
-[authenticity]
-policy = "clean"
-
-[[targets]]
+[[target]]
 id = "program"
-artifact = "build/grind.exe"
-oracle = "reference/grind.exe"
+artifact = "grind.exe"
+reference = "reference/grind.exe"
+# The reference after normalization; prepare-reference.sh checks it too.
+sha256 = "9c78bd9cfe3c8ded8a9a587165237d2a394719b48be34021a3cb09aff8220aab"
+normalize = ["pe-timestamps"]
+
+[[step]]
+id = "compile.transform"
+program = "cl"
+args = ["/nologo", "/I${SOURCE}", "/Zi", "/O2", "/Ob1", '/Fo${BUILD}\obj\transform.obj', '/Fd${BUILD}\obj\transform.pdb', "/c", '${SOURCE}\transform.cpp']
+inputs = ["source/transform.cpp"]
+outputs = ["obj/transform.obj", "obj/transform.pdb"]
+
+[[step]]
+id = "link.grind"
+program = "link"
+args = ["/nologo", "/nodefaultlib", "/entry:transform", "/subsystem:console", '${BUILD}\obj\transform.obj', '/out:${BUILD}\grind.exe']
+inputs = ["build/obj/transform.obj"]
+outputs = ["grind.exe"]
