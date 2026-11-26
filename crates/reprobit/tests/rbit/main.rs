@@ -13,6 +13,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
+mod rewrite;
+
 /// A scratch world: tool home, test catalog, and one project directory.
 pub(crate) struct World {
     temp: TempDir,
@@ -390,102 +392,6 @@ fn a_stamped_link_time_makes_the_artifact_itself_match() {
         &format!("{project}stamp = {{ pe-timestamp = 0x3f3a5c1f }}\n"),
     );
     assert_eq!(world.rbit(&["verify"]).code, 1);
-}
-
-/// An i386 COFF object whose only symbol, `_f`, is `code`.
-fn i386_object(code: &[u8]) -> Vec<u8> {
-    let length = u32::try_from(code.len()).expect("short code");
-    let mut object = Vec::new();
-    object.extend(0x14c_u16.to_le_bytes());
-    object.extend(1_u16.to_le_bytes());
-    object.extend(0_u32.to_le_bytes());
-    object.extend((60 + length).to_le_bytes());
-    object.extend(1_u32.to_le_bytes());
-    object.extend([0; 4]);
-    object.extend(b".text\0\0\0");
-    // Sizes, raw-data pointer, no relocations or line numbers, then code flags.
-    for word in [0, 0, length, 60, 0, 0, 0, 0x6000_0020] {
-        object.extend(u32::to_le_bytes(word));
-    }
-    object.extend(code);
-    object.extend(b"_f\0\0\0\0\0\0");
-    object.extend(0_u32.to_le_bytes());
-    object.extend([1, 0, 0x20, 0, 2, 0]);
-    object.extend(4_u32.to_le_bytes());
-    object
-}
-
-/// `push esi; push edi; mov esi, [esp+12]; mov edi, esi; add edi, 1;
-/// mov eax, edi; pop edi; pop esi; ret`
-const SAVES_ESI_FIRST: &[u8] = &[
-    0x56, 0x57, 0x8b, 0x74, 0x24, 0x0c, 0x8b, 0xfe, 0x83, 0xc7, 0x01, 0x8b, 0xc7, 0x5f, 0x5e, 0xc3,
-];
-/// The same function with `esi` and `edi` exchanged.
-const SAVES_EDI_FIRST: &[u8] = &[
-    0x57, 0x56, 0x8b, 0x7c, 0x24, 0x0c, 0x8b, 0xf7, 0x83, 0xc6, 0x01, 0x8b, 0xc6, 0x5e, 0x5f, 0xc3,
-];
-
-/// A world whose step compiles `main.c` to `main.obj`, the target.
-fn object_world(built: &[u8], reference: &[u8]) -> World {
-    let world = World::new();
-    let project = fs::read_to_string(world.project().join("reprobit.toml")).expect("project");
-    world.edit("reprobit.toml", &project.replace("app.bin", "main.obj"));
-    fs::write(world.project().join("main.c"), i386_object(built)).expect("built object");
-    fs::write(
-        world.project().join("reference/main.obj"),
-        i386_object(reference),
-    )
-    .expect("reference");
-    world
-}
-
-#[test]
-fn grind_finds_a_register_rename_and_the_saved_rename_matches() {
-    let world = object_world(SAVES_ESI_FIRST, SAVES_EDI_FIRST);
-    succeeds(&world.rbit(&["setup"]));
-    assert_eq!(world.rbit(&["verify"]).code, 1);
-    let grind = [
-        "grind",
-        "--step",
-        "compile.main",
-        "--symbol",
-        "_f",
-        "--reference-object",
-        "reference/main.obj",
-        "--family",
-        "registers",
-    ];
-
-    let found = world.rbit(&grind);
-    let accepted = world.rbit(&[&grind[..], &["--accept"]].concat());
-
-    assert_eq!(
-        succeeds(&found)["found"],
-        json!({ "prelude": null, "registers": { "esi": "edi", "edi": "esi" } })
-    );
-    assert_eq!(succeeds(&accepted)["accepted"], true);
-    succeeds(&world.rbit(&["verify"]));
-    assert_eq!(succeeds(&world.rbit(&grind))["already_matches"], true);
-}
-
-#[test]
-fn a_rename_that_would_miss_an_implicit_register_use_is_refused() {
-    // `movsd` copies from [esi] to [edi] without naming either register.
-    let world = object_world(&[0x56, 0x57, 0xa5, 0x5f, 0x5e, 0xc3], &[0xc3]);
-    let project = fs::read_to_string(world.project().join("reprobit.toml")).expect("project");
-    world.edit(
-        "reprobit.toml",
-        &project.replace(
-            "outputs = [\"main.obj\"]",
-            "outputs = [\"main.obj\"]\nregisters = { _f = { esi = \"edi\", edi = \"esi\" } }",
-        ),
-    );
-    succeeds(&world.rbit(&["setup"]));
-
-    let refused = world.rbit(&["build"]);
-
-    assert_ne!(refused.code, 0);
-    assert!(refused.stderr.contains("implicitly"), "{}", refused.stderr);
 }
 
 #[test]

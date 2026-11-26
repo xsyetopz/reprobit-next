@@ -128,7 +128,19 @@ the GOT address in it. The rename refuses a function it cannot rewrite in place:
 instruction that uses a renamed register without naming it, such as `rep movsd`, a byte
 register such as `bl` whose new register has none, an encoding whose length would change, a
 relocated field that would change, or a jump through a table, whose data may follow the
-code. Debug records that name registers keep their names.
+code.
+
+Debug records follow the code, so debuggers and unwinders see the renamed registers:
+
+| Format | Renamed in the function's scope |
+| --- | --- |
+| `CodeView` (`.debug$S`, MSVC 4.x and later, clang-cl) | Register variables, register-relative locals, live ranges, and the frame programs that say where saved registers live |
+| DWARF (`.debug_info`, `.debug_loc`, `.debug_loclists`) | Location expressions, including location lists |
+| Call-frame information (`.eh_frame`, `.debug_frame`) | The rules that restore saved registers |
+
+Records shared with other functions are never edited in place: a frame program another
+function also uses gets a renamed copy. A record the rename cannot express is refused, such
+as a frame addressed from `ebx` or a DWARF entry value that names a renamed register.
 
 `rbit grind` tries every rename on each candidate prelude, so it finds a prelude and a rename
 together; `--family registers` alone tries renames without a new prelude.

@@ -23,6 +23,7 @@ workspace = true
 anyhow = "1.0.105"
 clap = { version = "4.6.10", features = ["derive"] }
 flate2 = "1.1.11"
+gimli = { version = "0.34.0", default-features = false, features = ["read", "std"] }
 hex = "0.4.3"
 iced-x86 = { version = "1.22.0", default-features = false, features = ["std", "decoder", "encoder", "instr_info"] }
 lzma-rs = "0.3.0"
@@ -37,4 +38,5 @@ toml_edit = "0.25.21"
 zip = { version = "9.8.2", default-features = false, features = ["deflate-flate2"] }
 
 [dev-dependencies]
+object = { version = "0.41.0", features = ["write"] }
 tempfile = "3.27.0"

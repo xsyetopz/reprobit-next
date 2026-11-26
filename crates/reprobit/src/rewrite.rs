@@ -15,9 +15,15 @@ use anyhow::{Context, Result, bail, ensure};
 use iced_x86::{
     Decoder, DecoderOptions, Encoder, FlowControl, InstructionInfoFactory, OpKind, Register,
 };
-use object::{Architecture, BinaryFormat, Object};
+use object::{
+    Architecture, BinaryFormat, Object, ObjectSection, ObjectSymbol, RelocationTarget,
+    SectionIndex, SymbolIndex, SymbolKind,
+};
 
-use crate::binary::Function;
+use crate::binary::{self, Function};
+
+mod codeview;
+mod dwarf;
 
 /// Renamed registers, as `{ from = "to" }`.
 pub(crate) type Registers = BTreeMap<String, String>;
@@ -32,11 +38,149 @@ pub(crate) fn renamable(object_bytes: &[u8]) -> Result<&'static [&'static str]> 
         "register renaming covers i386 objects; this one is {:?}",
         file.architecture()
     );
-    Ok(if file.format() == BinaryFormat::Elf {
-        &["esi", "edi"]
-    } else {
-        &["ebx", "esi", "edi"]
+    Ok(match file.format() {
+        BinaryFormat::Elf => &["esi", "edi"],
+        BinaryFormat::Coff => &["ebx", "esi", "edi"],
+        // Mach-O compact unwind records saved registers in a form that is
+        // not renamed.
+        format => bail!("register renaming covers COFF and ELF objects; this one is {format:?}"),
     })
+}
+
+/// Renames registers in functions of an object, code and debug records
+/// alike: `CodeView` symbols and frame programs, DWARF locations, and
+/// call-frame information, so debuggers and unwinders follow the code.
+pub(crate) fn rename_object(
+    mut bytes: Vec<u8>,
+    functions: &BTreeMap<String, Registers>,
+) -> Result<Vec<u8>> {
+    let allowed = renamable(&bytes)?;
+    for (symbol, registers) in functions {
+        let context = || format!("cannot rename registers in {symbol}");
+        let (at, function) = binary::locate(&bytes, symbol)?;
+        let renamed = rename(&function, registers, allowed).with_context(context)?;
+        bytes[at..at + renamed.len()].copy_from_slice(&renamed);
+        let anchor = Anchor::find(&bytes, symbol)?;
+        bytes = codeview::rename(bytes, &anchor, registers).with_context(context)?;
+        dwarf::rename(&mut bytes, symbol, &anchor, registers).with_context(context)?;
+    }
+    Ok(bytes)
+}
+
+/// Where a function starts, so debug records can be tied to it through the
+/// relocations that point at it.
+struct Anchor {
+    symbol: SymbolIndex,
+    section: SectionIndex,
+    offset: u64,
+}
+
+impl Anchor {
+    fn find(bytes: &[u8], name: &str) -> Result<Self> {
+        let file = object::File::parse(bytes)?;
+        let symbol = file
+            .symbols()
+            .find(|symbol| symbol.name() == Ok(name))
+            .with_context(|| format!("the object has no symbol {name}"))?;
+        let section = symbol
+            .section_index()
+            .context("the symbol is not defined in a section")?;
+        Ok(Self {
+            symbol: symbol.index(),
+            section,
+            offset: symbol.address() - file.section_by_index(section)?.address(),
+        })
+    }
+
+    /// Offsets in `section` of relocations that point at the function's
+    /// first byte, through its symbol or its section's.
+    fn hits(
+        &self,
+        file: &object::File<'_>,
+        section: &object::Section<'_, '_>,
+    ) -> Result<Vec<usize>> {
+        let data = section.data()?;
+        let mut hits = Vec::new();
+        for (offset, relocation) in section.relocations() {
+            let RelocationTarget::Symbol(target) = relocation.target() else {
+                continue;
+            };
+            let at = usize::try_from(offset)?;
+            let addend = if relocation.has_implicit_addend() {
+                data.get(at..at + 4).map_or(0, |field| {
+                    u64::from(u32::from_le_bytes([field[0], field[1], field[2], field[3]]))
+                })
+            } else {
+                relocation.addend().cast_unsigned()
+            };
+            let hit = if target == self.symbol {
+                addend == 0
+            } else {
+                file.symbol_by_index(target).is_ok_and(|symbol| {
+                    symbol.kind() == SymbolKind::Section
+                        && symbol.section_index() == Some(self.section)
+                }) && addend == self.offset
+            };
+            if hit {
+                hits.push(at);
+            }
+        }
+        Ok(hits)
+    }
+}
+
+/// Replaces COFF section `index` with `data`, which grew by `by` bytes at
+/// section offset `at`. The new data goes where the symbol table was, the
+/// symbol table after it, and the section's relocations past `at` move with
+/// their bytes; the old data stays behind, unreferenced.
+fn coff_grow(
+    mut bytes: Vec<u8>,
+    index: SectionIndex,
+    data: Vec<u8>,
+    at: usize,
+    by: usize,
+) -> Result<Vec<u8>> {
+    let word = |bytes: &[u8], at: usize| -> Result<usize> {
+        let field = bytes.get(at..at + 4).context("truncated COFF header")?;
+        Ok(usize::try_from(u32::from_le_bytes([
+            field[0], field[1], field[2], field[3],
+        ]))?)
+    };
+    let put = |bytes: &mut [u8], at: usize, value: usize| -> Result<()> {
+        bytes[at..at + 4].copy_from_slice(&u32::try_from(value)?.to_le_bytes());
+        Ok(())
+    };
+    let symbols = word(&bytes, 8)?;
+    let optional = usize::from(u16::from_le_bytes([bytes[16], bytes[17]]));
+    let count = usize::from(u16::from_le_bytes([bytes[2], bytes[3]]));
+    ensure!(symbols > 0, "the object has no symbol table to move");
+    for header in (0..count).map(|number| 20 + optional + 40 * number) {
+        for field in [20, 24, 28] {
+            ensure!(
+                word(&bytes, header + field)? <= symbols,
+                "a section lies after the symbol table"
+            );
+        }
+    }
+    let header = 20 + optional + 40 * (index.0 - 1);
+    let relocations = word(&bytes, header + 24)?;
+    let relocation_count =
+        usize::from(u16::from_le_bytes([bytes[header + 32], bytes[header + 33]]));
+    ensure!(
+        word(&bytes, header + 36)? & 0x0100_0000 == 0,
+        "the section has more than 65535 relocations"
+    );
+    for entry in (0..relocation_count).map(|number| relocations + 10 * number) {
+        let offset = word(&bytes, entry)?;
+        if offset >= at {
+            put(&mut bytes, entry, offset + by)?;
+        }
+    }
+    put(&mut bytes, header + 16, data.len())?;
+    put(&mut bytes, header + 20, symbols)?;
+    put(&mut bytes, 8, symbols + data.len())?;
+    bytes.splice(symbols..symbols, data);
+    Ok(bytes)
 }
 
 /// Every non-identity permutation of `names`, each without its fixed points.
