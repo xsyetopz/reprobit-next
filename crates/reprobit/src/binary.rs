@@ -305,7 +305,10 @@ pub(crate) fn locate(object_bytes: &[u8], symbol: &str) -> Result<(usize, Functi
     } else {
         file.symbols()
             .filter(|item| {
-                item.section_index() == Some(index) && item.address() - section.address() > start
+                // COFF line-number symbols mark places inside a function.
+                !matches!(item.name(), Ok(".bf" | ".lf" | ".ef" | ".bb" | ".eb"))
+                    && item.section_index() == Some(index)
+                    && item.address() - section.address() > start
             })
             .map(|item| item.address() - section.address())
             .min()
