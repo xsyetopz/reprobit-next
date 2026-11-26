@@ -13,6 +13,7 @@ catalog and checks every proof; the `Proofs` workflow runs it on each change.
 | `ReproBit/Basic.lean` | `run`: execute a program left to right |
 | `ReproBit/Permutation.lean` | `run_equivariant`, `callee_saved` |
 | `ReproBit/Reorder.lean` | `swap_nonconflicting`, `reorder_sound`, `reorderOk_sound` |
+| `ReproBit/Correspondence.lean` | `post_holds`, `run_agrees`, `rename_sound` |
 
 ## Theorem 1: register permutation (`crates/reprobit/src/rewrite.rs`)
 
@@ -86,3 +87,33 @@ they keep their order and each sees the same `depth`. That this encoding
 computes the operation is an obligation on the Rust code, like the footprints,
 and is not proved in Lean. Faults are outside the model: a moved load that
 faults does so at its new place.
+
+## Theorem 3: per-instruction register renames
+
+Both programs share their instruction indices and control flow graph. Each
+point holds an old instruction with `reads` and `writes` and its renamed form
+under `rho`. `σ p` lists pairs `(n, o)`: on reaching `p`, the new program's
+register `n` holds the old program's register `o`.
+
+- `Renamed.Sound`: given inputs equal under `rho`, the renamed instruction
+  writes `rho w` with the value the old one writes to `w`, takes the same
+  successor, and leaves everything else alone.
+- `Post i σ`: the pairs that hold after `i`, namely those `i` overwrites on
+  neither side, plus `(rho w, w)` for each write.
+- `Checked`: every point is sound, each read `r` finds `(rho r, r)` in `σ`,
+  `σ` at a successor is within `Post` of its predecessor, and at an exit every
+  observed register `r` has `(r, r)` in `Post`.
+- `run_agrees` and `rename_sound`: if `Checked` holds and the entry has only
+  identity pairs, the renamed program finishes whenever the old one does, with
+  equal observed registers.
+
+`rename::check` in `crates/reprobit-msvc-4x/src/rename.rs` computes `σ` as
+the greatest fixpoint, met by intersection at joins, and checks `reads` and
+`exit`. It observes the registers a caller sees at a `ret`, and all general
+registers at other exits; a superset of the `ret` set, so `Checked` holds with
+`obs` as the `ret` set. `Renamed.Sound` is an obligation on the Rust code, as
+`Respects` is for Theorem 2: `rename::encode` requires every renamed register
+to be an explicit operand, `rho` to be injective on the registers the
+instruction uses, and the re-decoded instruction's footprint to equal `rho` of
+the original's. Flags and memory are never renamed, so they are equal on both
+sides. Calls are modelled by the calling convention, as in Theorem 1.
