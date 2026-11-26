@@ -161,6 +161,21 @@ pub(crate) struct Step {
     /// every calling convention preserves, so behaviour cannot change.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) registers: BTreeMap<String, Registers>,
+    /// Add-on rewrites applied in order to the step's object after it
+    /// compiles and after `registers`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) rewrite: Vec<Rewrite>,
+}
+
+/// One add-on rewrite: `<addon> rewrite <object> <args>…`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Rewrite {
+    /// The add-on's catalog id, which `toolchain.tools` must list.
+    pub(crate) addon: String,
+    /// Arguments after the object path.
+    #[serde(default)]
+    pub(crate) args: Vec<String>,
 }
 
 impl Step {
@@ -334,6 +349,33 @@ impl Loaded {
             if table.is_empty() {
                 step.remove("registers");
             }
+            Ok(())
+        })
+    }
+
+    /// Appends add-on rewrites to a step.
+    pub(crate) fn add_rewrites(&self, id: &str, rewrites: &[Rewrite]) -> Result<()> {
+        self.edit_step(id, |step| {
+            let list = step
+                .entry("rewrite")
+                .or_insert_with(|| toml_edit::value(toml_edit::Array::new()))
+                .as_array_mut()
+                .context("rewrite must be an array")?;
+            for rewrite in rewrites {
+                let mut table = toml_edit::InlineTable::new();
+                table.insert("addon", rewrite.addon.as_str().into());
+                table.insert(
+                    "args",
+                    rewrite
+                        .args
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<toml_edit::Array>()
+                        .into(),
+                );
+                list.push(table);
+            }
+            list.fmt();
             Ok(())
         })
     }

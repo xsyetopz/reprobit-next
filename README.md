@@ -64,6 +64,7 @@ away from its original and shows `rbit grind` finding the compiler state that cl
 - [Project file](docs/project.md): `reprobit.toml` steps, targets, and preludes.
 - [Catalog](docs/catalog.md): tool entries, fetch kinds, and adding your own catalog.
 - [Runners](docs/runners.md): how Win32 and Linux compilers run on each host.
+- [Add-ons](docs/addons.md): community rewrites per compiler, such as `msvc-4x`, and their protocol.
 - [Agents](docs/agents.md): the skill, plugins, and MCP server.
 - [Research notes](docs/research.md): the projects and tools this builds on.
 

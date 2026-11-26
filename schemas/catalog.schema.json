@@ -268,7 +268,7 @@
           "default": ""
         },
         "kind": {
-          "description": "`compiler`, `tool`, or `runtime` (something other tools run on, like Wine).",
+          "description": "`compiler`, `tool`, `runtime` (something other tools run on, like Wine),\nor `addon` (a program that rewrites objects; see `docs/addons.md`).",
           "type": "string",
           "default": "tool"
         },

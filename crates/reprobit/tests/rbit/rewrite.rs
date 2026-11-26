@@ -8,6 +8,7 @@ use object::{
     SymbolFlags, SymbolKind, SymbolScope, write,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use super::{World, succeeds};
 
@@ -135,7 +136,7 @@ fn grind_finds_a_register_rename_and_the_saved_rename_matches() {
 
     assert_eq!(
         succeeds(&found)["found"],
-        json!({ "prelude": null, "registers": { "esi": "edi", "edi": "esi" } })
+        json!({ "prelude": null, "registers": { "esi": "edi", "edi": "esi" }, "rewrite": [] })
     );
     assert_eq!(succeeds(&accepted)["accepted"], true);
     succeeds(&world.rbit(&["verify"]));
@@ -406,5 +407,81 @@ fn a_register_rename_carries_into_codeview_records_without_touching_shared_ones(
     assert_eq!(
         codeview_registers(&built),
         [renamed.clone(), (23, "$T0 $esi =".to_owned()), renamed]
+    );
+}
+
+#[test]
+fn grind_saves_an_add_on_rewrite_that_makes_the_function_match() {
+    let world = object_world(
+        "main.obj",
+        &coff_function(SAVES_ESI_FIRST),
+        &coff_function(SAVES_EDI_FIRST),
+    );
+    fs::write(
+        world.project().join("fixed.obj"),
+        coff_function(SAVES_EDI_FIRST),
+    )
+    .expect("fixed");
+    // Proposes one rewrite, which copies a project file over the object.
+    let (name, script): (&str, &[u8]) = if cfg!(windows) {
+        (
+            "addon.cmd",
+            b"@echo off\r\nif \"%1\"==\"propose\" (echo [[\"copy\",\"fixed.obj\"]] & exit /b 0)\r\ncopy /b /y \"%~4\" \"%~2\" >nul\r\n",
+        )
+    } else {
+        (
+            "addon",
+            b"#!/bin/sh\nif [ \"$1\" = propose ]; then echo '[[\"copy\",\"fixed.obj\"]]'; exit 0; fi\ncp \"$4\" \"$2\"\n",
+        )
+    };
+    let mirror = world.temp.path().join("mirror").join(name);
+    fs::write(&mirror, script).expect("add-on");
+    let catalog = world.temp.path().join("catalog.toml");
+    let entry = format!(
+        "[tools.fake-addon]\nkind = \"addon\"\nversion = \"1\"\nruns = \"host\"\nbin = {{ fake-addon = \"{name}\" }}\n\
+         [[tools.fake-addon.get]]\nurl = {url:?}\nsha256 = \"{sha}\"\nas = \"{name}\"\n",
+        url = mirror.display().to_string(),
+        sha = hex::encode(Sha256::digest(script)),
+    );
+    fs::write(
+        &catalog,
+        fs::read_to_string(&catalog).expect("catalog") + &entry,
+    )
+    .expect("catalog");
+    let project = fs::read_to_string(world.project().join("reprobit.toml")).expect("project");
+    world.edit(
+        "reprobit.toml",
+        &project.replace(
+            "compiler = \"fake-cc\"",
+            "compiler = \"fake-cc\"\ntools = [\"fake-addon\"]",
+        ),
+    );
+    succeeds(&world.rbit(&["setup"]));
+    let grind = [
+        "grind",
+        "--step",
+        "compile.main",
+        "--symbol",
+        "_f",
+        "--reference-object",
+        "reference/main.obj",
+        "--family",
+        "fake-addon",
+        "--accept",
+    ];
+
+    let found = world.rbit(&grind);
+
+    assert_eq!(
+        succeeds(&found)["found"]["rewrite"],
+        json!([{ "addon": "fake-addon", "args": ["copy", "fixed.obj"] }])
+    );
+    let verified = world.rbit(&["verify"]);
+    let adjustment = succeeds(&verified)["steps"][0]["adjustments"][0]
+        .as_str()
+        .expect("listed");
+    assert!(
+        adjustment.starts_with("rewrite fake-addon copy fixed.obj"),
+        "{adjustment}"
     );
 }

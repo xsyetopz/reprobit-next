@@ -1,5 +1,5 @@
-# Project-owned: builds and tests `rbit` on every host it supports, and
-# attaches release binaries to version tags.
+# Project-owned: builds and tests `rbit` and its add-ons on every host it
+# supports, and attaches release binaries to version tags.
 name: Platforms
 
 on:
@@ -45,8 +45,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          exe=target/release/rbit; [ -f "$exe.exe" ] && exe="$exe.exe"
-          archive="rbit-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
-          tar -czf "$archive" -C "$(dirname "$exe")" "$(basename "$exe")"
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes || true
-          gh release upload "$GITHUB_REF_NAME" "$archive" --clobber
+          # `rbit` and the `msvc-4x` add-on, which the catalog fetches from here.
+          for name in rbit rbit-msvc-4x; do
+            exe=target/release/$name; [ -f "$exe.exe" ] && exe="$exe.exe"
+            archive="$name-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
+            tar -czf "$archive" -C "$(dirname "$exe")" "$(basename "$exe")"
+            gh release upload "$GITHUB_REF_NAME" "$archive" --clobber
+          done

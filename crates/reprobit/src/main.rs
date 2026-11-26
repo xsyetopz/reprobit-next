@@ -2,6 +2,7 @@
 //! and show why the result can be trusted.
 #![expect(clippy::print_stdout, reason = "a command-line tool reports on stdout")]
 
+mod addon;
 mod binary;
 mod build;
 mod catalog;
