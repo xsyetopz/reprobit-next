@@ -11,13 +11,19 @@
 //! address the same slot from its new place. Pushes, pops, and `add` or
 //! `sub esp` by a constant keep their order among themselves, which keeps
 //! each one's own offset.
+//!
+//! An access through another register may reach the stack only if that
+//! register holds an address computed from `esp`. When no such address is
+//! stored, pushed, or held across a call, no pointer from elsewhere can name
+//! this function's stack, which lies below every address its caller holds,
+//! so accesses through registers not computed from `esp` reach no stack byte.
 
 use std::collections::BTreeSet;
 
 use anyhow::{Result, bail, ensure};
 use iced_x86::{
     CpuidFeature, Decoder, DecoderOptions, FlowControl, Instruction as Decoded,
-    InstructionInfoFactory, Mnemonic, OpAccess, OpKind, Register, UsedMemory,
+    InstructionInfoFactory, Mnemonic, OpAccess, OpKind, Register, UsedMemory, UsedRegister,
 };
 
 /// A machine location an instruction reads or writes.
@@ -71,6 +77,10 @@ impl Instruction {
     }
 }
 
+/// A decoded instruction, its displacement field, and the registers and
+/// memory it uses.
+type Raw = (Decoded, (usize, usize), Vec<UsedRegister>, Vec<UsedMemory>);
+
 /// A memory displacement as the signed 32-bit value it encodes.
 fn signed(value: u64) -> i64 {
     i64::from(i32::from_le_bytes(
@@ -119,6 +129,7 @@ pub(crate) fn decode(code: &[u8], barriers: &BTreeSet<usize>) -> Result<Vec<Inst
     }
     let mut decoded: Vec<Instruction> = Vec::with_capacity(raw.len());
     let (mut run, mut depth) = (0, 0);
+    let frame = frame_registers(&raw);
     // Accesses through other registers may reach any stack byte.
     let mut aliasing = Vec::new();
     for (instruction, (at, width), registers, memory) in raw {
@@ -150,7 +161,8 @@ pub(crate) fn decode(code: &[u8], barriers: &BTreeSet<usize>) -> Result<Vec<Inst
                 writes.insert(full);
             }
         }
-        let through = memory_footprint(&memory, run, depth, &mut reads, &mut writes)?;
+        let through =
+            memory_footprint(&memory, run, depth, frame.as_ref(), &mut reads, &mut writes)?;
         status_footprint(&instruction, &mut reads, &mut writes);
         let barrier = control
             || instruction.is_privileged()
@@ -179,6 +191,64 @@ pub(crate) fn decode(code: &[u8], barriers: &BTreeSet<usize>) -> Result<Vec<Inst
     }
     alias(&mut decoded, aliasing);
     Ok(decoded)
+}
+
+/// The registers that may hold an address computed from `esp`, or `None`
+/// when such an address may escape: stored or pushed, or held in a register
+/// while the function calls another.
+fn frame_registers(raw: &[Raw]) -> Option<BTreeSet<Register>> {
+    let mut frame = BTreeSet::from([Register::ESP]);
+    loop {
+        let before = frame.len();
+        for (instruction, _, registers, memory) in raw {
+            let lea = instruction.mnemonic() == Mnemonic::Lea;
+            let addressing: BTreeSet<Register> = memory
+                .iter()
+                .flat_map(|used| [used.base(), used.index()])
+                .map(Register::full_register32)
+                .collect();
+            let named = |register: Register| {
+                (0..instruction.op_count()).any(|operand| {
+                    instruction.op_kind(operand) == OpKind::Register
+                        && instruction.op_register(operand).full_register32() == register
+                })
+            };
+            // A value read from a register, not an address it forms or the
+            // stack pointer a push or pop moves.
+            let derived = registers.iter().any(|used| {
+                let register = used.register().full_register32();
+                access(used.access()).0
+                    && frame.contains(&register)
+                    && (named(register)
+                        || lea
+                        || !(addressing.contains(&register)
+                            || (register == Register::ESP
+                                && instruction.stack_pointer_increment() != 0)))
+            });
+            if !derived {
+                continue;
+            }
+            if memory.iter().any(|used| access(used.access()).1) {
+                return None;
+            }
+            frame.extend(
+                registers
+                    .iter()
+                    .filter(|used| access(used.access()).1)
+                    .map(|used| used.register().full_register32()),
+            );
+        }
+        if frame.len() == before {
+            break;
+        }
+    }
+    let calls = raw.iter().any(|(instruction, ..)| {
+        matches!(
+            instruction.flow_control(),
+            FlowControl::Call | FlowControl::IndirectCall
+        )
+    });
+    (!calls || frame.len() == 1).then_some(frame)
 }
 
 /// Adds every stack byte the function names to each access through a
@@ -238,15 +308,18 @@ fn stack_operand(instruction: &Decoded) -> bool {
 
 /// Adds the memory an instruction accesses: the stack bytes `[esp+d]`
 /// names in `run`, or all memory. Returns whether it reads or writes
-/// through another register, which may reach any stack byte.
+/// through another register that may reach any stack byte: one of `frame`,
+/// or any when `frame` is `None`.
 fn memory_footprint(
     memory: &[UsedMemory],
     run: usize,
     depth: i64,
+    frame: Option<&BTreeSet<Register>>,
     reads: &mut BTreeSet<Location>,
     writes: &mut BTreeSet<Location>,
 ) -> Result<(bool, bool)> {
     let mut through = (false, false);
+    let mut elsewhere = (false, false);
     for memory in memory {
         let (read, write) = access(memory.access());
         if memory.base() == Register::ESP && memory.index() == Register::None {
@@ -259,15 +332,22 @@ fn memory_footprint(
                     writes.insert(Location::Slot(run, byte));
                 }
             }
-        } else {
+        } else if frame.is_none_or(|frame| {
+            [memory.base(), memory.index()]
+                .iter()
+                .any(|register| frame.contains(&register.full_register32()))
+        }) {
             through.0 |= read || write;
             through.1 |= write;
+        } else {
+            elsewhere.0 |= read || write;
+            elsewhere.1 |= write;
         }
     }
-    if through.0 {
+    if through.0 || elsewhere.0 {
         reads.insert(Location::Memory);
     }
-    if through.1 {
+    if through.1 || elsewhere.1 {
         writes.insert(Location::Memory);
     }
     Ok(through)

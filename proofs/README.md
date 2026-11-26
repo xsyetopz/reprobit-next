@@ -77,7 +77,12 @@ theorem covers.
 Memory is split into one location per stack byte, numbered from `esp` at the
 run's start, and one for the rest. An access through a register other than
 `esp` lists the rest and every stack byte the run names, since it may reach
-any of them. The theorem's instructions are then the operations, not their
+any of them, unless the register cannot hold a stack address:
+`schedule::frame_registers` finds every register an address computed from
+`esp` may reach, and gives up when such an address is stored, pushed, or held
+across a call. That a pointer from elsewhere never names this function's
+stack is an assumption about the program, as the calling convention is for
+Theorem 1: C gives no pointer to memory below a caller's stack pointer. The theorem's instructions are then the operations, not their
 encodings: `[esp+d]` at a point where `esp` sits `depth` below the run's start
 is the operation on byte `depth + d`, which reads no `esp`. `schedule::emit`
 encodes each operation at its new place with `d' = d + depth - depth'`, and

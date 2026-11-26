@@ -203,9 +203,9 @@ fn a_rebased_displacement_that_outgrows_its_encoding_is_refused() {
 }
 
 #[test]
-fn a_load_through_another_register_does_not_cross_a_push() {
+fn a_load_through_a_pointer_the_function_was_given_crosses_a_push() {
     let dir = tempfile::tempdir().unwrap();
-    // `mov eax, [ecx]` may point at the stack.
+    // `ecx` comes from the caller, so it points above the slot the push writes.
     let load_pointer: [u8; 2] = [0x8b, 0x01];
     let path = object(
         dir.path(),
@@ -214,7 +214,70 @@ fn a_load_through_another_register_does_not_cross_a_push() {
         &[],
         None,
     );
-    assert!(!schedule(&path, "1,0,2").status.success());
+    let output = schedule(&path, "1,0,2");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        function(&path).0,
+        [&PUSH_EDX[..], &load_pointer, &RET].concat()
+    );
+}
+
+#[test]
+fn a_load_through_an_address_computed_from_esp_does_not_cross_a_push() {
+    let dir = tempfile::tempdir().unwrap();
+    // `lea ecx, [esp-4]`, then `mov eax, [ecx]`, which reads the slot `push edx` writes.
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[&[0x8d, 0x4c, 0x24, 0xfc], &[0x8b, 0x01], &PUSH_EDX, &RET],
+        &[],
+        None,
+    );
+    assert!(!schedule(&path, "0,2,1,3").status.success());
+}
+
+#[test]
+fn no_load_through_another_register_crosses_a_push_once_a_stack_address_escapes() {
+    let dir = tempfile::tempdir().unwrap();
+    // `lea eax, [esp]` and `mov [_g], eax` store a stack address anyone may load.
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[
+            &[0x8d, 0x04, 0x24],
+            &[0xa3, 0, 0, 0, 0],
+            &[0x8b, 0x01],
+            &PUSH_EDX,
+            &RET,
+        ],
+        &[4],
+        None,
+    );
+    assert!(!schedule(&path, "0,1,3,2,4").status.success());
+}
+
+#[test]
+fn no_load_through_another_register_crosses_a_push_once_a_call_may_see_a_stack_address() {
+    let dir = tempfile::tempdir().unwrap();
+    // `lea ebx, [esp+8]` survives `call _g`, which may store it where `ecx` points.
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[
+            &[0x8d, 0x5c, 0x24, 0x08],
+            &[0xe8, 0, 0, 0, 0],
+            &[0x8b, 0x01],
+            &PUSH_EDX,
+            &RET,
+        ],
+        &[5],
+        None,
+    );
+    assert!(!schedule(&path, "0,1,3,2,4").status.success());
 }
 
 #[test]
