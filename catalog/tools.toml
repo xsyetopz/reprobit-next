@@ -730,6 +730,37 @@ host = ["windows-x86_64"]
 url = "https://github.com/ruffle-rs/ruffle/releases/download/nightly-2026-11-11/ruffle-nightly-2026_11_11-windows-x86_64.zip"
 sha256 = "53ca452bb3b4813138e083eb6a3bb2b0da70788e4b229a13a31c140b266e04fd"
 
+# --- Add-ons -----------------------------------------------------------------
+
+[tools."msvc-4x"]
+kind = "addon"
+summary = "Rewrites MSVC 4.x i386 COFF objects: schedule, rename, exchange, and region, each proved to keep behaviour"
+version = "0.3.0"
+homepage = "https://github.com/xsyetopz/reprobit-next/tree/master/crates/reprobit-msvc-4x"
+license = "LGPL-3.0-only"
+tags = ["x86", "win32", "pc", "msvc"]
+bin = { msvc-4x = "rbit-msvc-4x" }
+
+[[tools."msvc-4x".get]]
+host = ["macos-aarch64"]
+url = "https://github.com/xsyetopz/reprobit-next/releases/download/v0.3.0/rbit-msvc-4x-v0.3.0-aarch64-apple-darwin.tar.gz"
+sha256 = "f640f0b980155dbb388a6e7627b2951c2b9f18b0b178792b2494c62c883f41a6"
+
+[[tools."msvc-4x".get]]
+host = ["macos-x86_64"]
+url = "https://github.com/xsyetopz/reprobit-next/releases/download/v0.3.0/rbit-msvc-4x-v0.3.0-x86_64-apple-darwin.tar.gz"
+sha256 = "0b64a80a9ef910aa20dc5fa96fd2420ff32ea145a15a97e4c1c86cd26f53f293"
+
+[[tools."msvc-4x".get]]
+host = ["linux-x86_64"]
+url = "https://github.com/xsyetopz/reprobit-next/releases/download/v0.3.0/rbit-msvc-4x-v0.3.0-x86_64-unknown-linux-gnu.tar.gz"
+sha256 = "72ec9d0af5aa8b4bd72d8e1148f741845e1225549275aa6a5c21c75c3f8d4bd1"
+
+[[tools."msvc-4x".get]]
+host = ["windows-x86_64"]
+url = "https://github.com/xsyetopz/reprobit-next/releases/download/v0.3.0/rbit-msvc-4x-v0.3.0-x86_64-pc-windows-msvc.tar.gz"
+sha256 = "7445da41ec12cf79ca9a2b429baa23c108c30aed6d94a97047c6e52479d4739f"
+
 # --- Collections -------------------------------------------------------------
 
 # Every compiler decomp.me serves, as tools named decompme/<platform>/<name>,
