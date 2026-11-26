@@ -74,7 +74,27 @@ every platform and drops what only steered that one compiler:
 - Agent skills for decompilation, such as Game-Decompilation-Skill-For-Claude, keep to a
   short loop, the commands the agent may run, and the rules it must not break; the
   ReproBit skill follows that shape.
-- [radare2](https://github.com/radareorg/radare2) and Cutter,
-  [mytechnotalent/Reverse-Engineering](https://github.com/mytechnotalent/Reverse-Engineering),
-  and [sindresorhus/awesome](https://github.com/sindresorhus/awesome) were surveyed for
-  tools; the catalog carries Rizin, the radare2 fork that Cutter is built on.
+- [radare2](https://github.com/radareorg/radare2) and Cutter, and
+  [mytechnotalent/Reverse-Engineering](https://github.com/mytechnotalent/Reverse-Engineering)
+  were surveyed for tools; the catalog carries Rizin, the radare2 fork that Cutter is built on.
+- [sindresorhus/awesome](https://github.com/sindresorhus/awesome) has no decompilation list.
+  Its nearest lists are Game Remakes (`awesome-game-remakes`, finished reimplementations,
+  many of them matching decompilations), Executable Packing (unpackers to run before
+  splitting), Malware Analysis and Hacking (disassemblers and debuggers already covered by
+  Ghidra and Rizin), and Command-Line Apps. None named a free tool the catalog lacked for a
+  supported platform.
+- [decomp/decomp](https://github.com/decomp/decomp) is a Go pipeline of single-purpose tools
+  that meet at LLVM IR: lift machine code, recover control flow (`ll2dot`, `restructure`),
+  emit Go. Its rule that decompilers should be composable from separate tools is the
+  catalog's model; its output is readable source, not a byte match, so it is not a catalog
+  tool. Development stopped after 0.2 in 2018.
+- [The markcodes.dev post on agents decompiling binaries](https://markcodes.dev/posts/ai-agents-decompile-binaries)
+  recovered C for a stripped ARM64 basE91 and checked behaviour, not bytes: a separate
+  evaluator wrote the tests without reading the recovered source, the source was frozen by
+  hash first, and every run compared stdout, stderr, exit status, and file effects against
+  the released binary (2,682 exact matches, none failed). It also built two differently
+  written functions into the same 536-byte object. Both lessons shape ReproBit: a byte
+  match shows the build reproduces the original, not that the source reads like the
+  author's, so `rbit verify` reports what shaped each output (preludes, renames, add-on
+  rewrites) next to the match; and where no byte match is possible, the original binary
+  stays the behaviour reference, as OpenSAB keeps the SWF.
