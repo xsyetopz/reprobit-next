@@ -158,10 +158,12 @@ fn populate(tool: &Tool, fetches: &[&Get], into: &Path) -> Result<Vec<String>> {
         let target = if picking { scratch.as_path() } else { into };
         if let Some(url) = &get.url {
             let archive = fetch::download(url, get.sha256.as_deref(), &[])?;
-            let name = get
-                .save_as
-                .clone()
-                .unwrap_or_else(|| url.rsplit('/').next().unwrap_or("download").to_owned());
+            let name = get.save_as.clone().unwrap_or_else(|| {
+                url.rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or("download")
+                    .to_owned()
+            });
             fetch::unpack(&archive, target, &get.strip, &name)?;
         } else if let Some(url) = &get.git {
             let rev = get

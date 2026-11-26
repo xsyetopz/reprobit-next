@@ -53,8 +53,9 @@ pub(crate) fn download(
     sha256: Option<&str>,
     headers: &[(&str, String)],
 ) -> Result<PathBuf> {
+    // A local Windows path separates its parts with `\`.
     let name = url
-        .rsplit('/')
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or("download")
         .split('?')
