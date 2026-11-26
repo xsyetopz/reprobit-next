@@ -2,14 +2,18 @@
 //! web or a stretch where two registers trade places. Each renamed
 //! instruction must be the same operation on the renamed registers, and the
 //! renamed function must pass the correspondence check in `correspond`.
+//! A renamed memory base can change an instruction's length, as `ebp`
+//! needs a displacement byte that other bases do not; `layout` writes such
+//! a function back.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Context, Result, bail, ensure};
-use iced_x86::{Encoder, Instruction, InstructionInfoFactory, OpKind, Register};
+use iced_x86::{Code, Encoder, Instruction, InstructionInfoFactory, OpKind, Register};
 
-use crate::coff::Function;
+use crate::coff::{Coff, Function};
 use crate::correspond::{self, GENERAL, Point, explicit, footprint};
+use crate::layout;
 use crate::schedule::Location;
 
 /// Per instruction index, a rename of 32-bit registers.
@@ -66,12 +70,27 @@ pub(crate) fn format(map: &Map) -> String {
         .join(",")
 }
 
-/// The rename that turns `built` into `reference` when they differ only in
-/// the registers their operands name, checked by applying it.
-pub(crate) fn derive(built: &Function, reference: &[u8]) -> Option<Map> {
-    let ours = correspond::decode(&built.bytes).ok()?;
-    let theirs = correspond::decode(reference).ok()?;
-    if built.bytes.len() != reference.len() || ours.len() != theirs.len() {
+/// The rename that turns `symbol`, `built` in `object`, into `reference`
+/// when they differ only in the registers their operands name and the
+/// padding after them, checked by applying it.
+pub(crate) fn derive(
+    object: &[u8],
+    symbol: &str,
+    built: &Function,
+    reference: &[u8],
+) -> Option<Map> {
+    let code = |bytes: &[u8]| -> Option<Vec<Instruction>> {
+        let mut decoded = correspond::decode(bytes).ok()?;
+        while decoded
+            .last()
+            .is_some_and(|last| matches!(last.code(), Code::Int3 | Code::Nopd))
+        {
+            decoded.pop();
+        }
+        Some(decoded)
+    };
+    let (ours, theirs) = (code(&built.bytes)?, code(reference)?);
+    if ours.len() != theirs.len() {
         return None;
     }
     let operands = |instruction: &Instruction| -> Vec<Register> {
@@ -86,7 +105,7 @@ pub(crate) fn derive(built: &Function, reference: &[u8]) -> Option<Map> {
     };
     let mut map = Map::new();
     for (index, (our, their)) in ours.iter().zip(&theirs).enumerate() {
-        if our.len() != their.len() || our.mnemonic() != their.mnemonic() {
+        if our.mnemonic() != their.mnemonic() {
             return None;
         }
         let mut renames = BTreeMap::new();
@@ -99,7 +118,8 @@ pub(crate) fn derive(built: &Function, reference: &[u8]) -> Option<Map> {
             map.insert(index, renames);
         }
     }
-    let renamed = apply(built, &map).ok()?;
+    let renamed = apply(object, built, &map).ok()?;
+    let renamed = Coff::parse(&renamed).ok()?.function(symbol).ok()?.bytes;
     (!map.is_empty() && renamed == reference).then_some(map)
 }
 
@@ -118,9 +138,10 @@ fn counterpart(used: Register, to: Register) -> Result<Register> {
     form.with_context(|| format!("{used:?} has no counterpart in {to:?}"))
 }
 
-/// Renames the registers `map` names in `function`, after checking the
-/// renamed code computes what the original did.
-pub(crate) fn apply(function: &Function, map: &Map) -> Result<Vec<u8>> {
+/// The object `object` with the registers `map` names renamed in
+/// `function`, after checking the renamed code computes what the original
+/// did.
+pub(crate) fn apply(object: &[u8], function: &Function, map: &Map) -> Result<Vec<u8>> {
     let decoded = correspond::decode(&function.bytes)?;
     if let Some(index) = map.keys().find(|&&index| index >= decoded.len()) {
         bail!(
@@ -130,28 +151,21 @@ pub(crate) fn apply(function: &Function, map: &Map) -> Result<Vec<u8>> {
     }
     let fields = function.fields();
     let mut info = InstructionInfoFactory::new();
-    let mut renamed = Vec::with_capacity(function.bytes.len());
+    let mut renamed = Vec::with_capacity(decoded.len());
     let mut points = Vec::with_capacity(decoded.len());
     for (index, instruction) in decoded.iter().enumerate() {
         let rho = map.get(&index).cloned().unwrap_or_default();
-        let inside = correspond::fields(instruction, &fields);
-        let point = Point::new(&mut info, &decoded, index, !inside.is_empty(), rho)?;
+        let relocated = !correspond::fields(instruction, &fields).is_empty();
+        let point = Point::new(&mut info, &decoded, index, relocated, rho)?;
         let at = instruction.ip();
-        let bytes = encode(instruction, &point, &mut info)
-            .with_context(|| format!("cannot rename the instruction at {at:#x}"))?;
-        let start = usize::try_from(at)?;
-        for field in inside {
-            let width = 4.min(start + instruction.len() - field);
-            ensure!(
-                bytes[field - start..field - start + width] == function.bytes[field..field + width],
-                "renaming changes the relocated field in the instruction at {at:#x}"
-            );
-        }
-        renamed.extend(bytes);
+        renamed.push(
+            encode(instruction, &point, &mut info)
+                .with_context(|| format!("cannot rename the instruction at {at:#x}"))?,
+        );
         points.push(point);
     }
     correspond::check(&points, &decoded, &correspond::entries(&decoded, function)?)?;
-    Ok(renamed)
+    layout::lay_out(object, function, &decoded, renamed)
 }
 
 /// Re-encodes `instruction` with its operands' registers renamed by the
@@ -209,10 +223,6 @@ fn encode(
     let mut encoder = Encoder::new(32);
     encoder.encode(&changed, instruction.ip())?;
     let bytes = encoder.take_buffer();
-    ensure!(
-        bytes.len() == instruction.len(),
-        "its encoding would change length"
-    );
     let redecoded = correspond::decode_at(&bytes, instruction.ip())?;
     let (reads, writes) = footprint(info, &redecoded);
     let mapped = |set: &BTreeSet<Location>| -> BTreeSet<Location> {

@@ -36,7 +36,8 @@ every platform and drops what only steered that one compiler:
 | x87 commutative operand exchange, relational compare and branch mirror, and equality slot exchange (`commutative`, `relational`) | Ported as the `msvc-4x` add-on's `exchange`, checked by the same correspondence with the flags each form sets differently as clobbers. |
 | Composition of these rewrites | `rewrite` chains rewrites, and `propose` searches chains of up to three. |
 | x87 sum reassociation (`floating`) | Not ported. Floating-point addition is not associative, so permuting three or more addends can change the rounded result, which the Python check accepted. |
-| Length-changing register re-encoding and simulated region rewrites (`register_reencoding`, `rewriting*`) | Not ported yet. |
+| Length-changing register re-encoding (`register_reencoding`) | Ported in the `msvc-4x` add-on's `rename`: an instruction whose renamed base changes its length moves, branches are encoded again, and padding absorbs the change or the object is laid out again. |
+| Simulated region rewrites (`rewriting*`) | Not ported yet. |
 | Instruction mosaics, same-slot resizes, and cross-unit bodies (`composition*`, about 6,000 lines): ranges or bodies taken from a second compile of the same unit | Not ported as splicing. A unit compiled with other flags is its own step, and the link step takes its object, so the build shows which compile each function came from. |
 | Compiler-state and COFF projection proofs (about 8,300 lines): proving a second compile reaches the first through a chain of rewrites | `rbit grind`, which tries preludes, register renames, and each add-on's proposals, and keeps one only when the function then matches byte for byte. |
 | Source-refactor equivalence proofs (about 3,300 lines) | Not ported; they compare C++ token streams, not objects. |

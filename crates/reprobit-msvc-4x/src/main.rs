@@ -14,6 +14,7 @@
 mod coff;
 mod correspond;
 mod exchange;
+mod layout;
 mod rename;
 mod schedule;
 
@@ -72,7 +73,7 @@ fn run(args: &[String]) -> Result<()> {
 
 /// Applies one rewrite, `<name> --symbol <symbol> <flag> <value>`, to the
 /// object in `bytes`.
-fn apply(bytes: &mut [u8], rewrite: &[&str]) -> Result<()> {
+fn apply(bytes: &mut Vec<u8>, rewrite: &[&str]) -> Result<()> {
     let [name, "--symbol", symbol, flag, value] = rewrite else {
         bail!(USAGE);
     };
@@ -89,7 +90,10 @@ fn apply(bytes: &mut [u8], rewrite: &[&str]) -> Result<()> {
                 .collect::<Result<Vec<_>>>()?;
             return reorder(bytes, symbol, &order);
         }
-        ("rename", "--map") => rename::apply(&function, &rename::parse(value)?)?,
+        ("rename", "--map") => {
+            *bytes = rename::apply(bytes, &function, &rename::parse(value)?)?;
+            return Ok(());
+        }
         ("exchange", "--at") => exchange::apply(&function, &exchange::parse(value)?)?,
         _ => bail!(USAGE),
     };
@@ -131,7 +135,7 @@ fn derive(built: &[u8], reference: &[u8], symbol: &str, loose: bool) -> Result<V
         ("schedule", "--order", order.join(","))
     });
     let map = (!loose)
-        .then(|| rename::derive(&ours, &theirs.bytes))
+        .then(|| rename::derive(built, symbol, &ours, &theirs.bytes))
         .flatten()
         .map(|map| ("rename", "--map", rename::format(&map)));
     let sites = exchange::derive(&ours, &theirs.bytes, loose)
