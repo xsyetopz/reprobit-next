@@ -35,7 +35,7 @@ Add `--accept` to write the match into `reprobit.toml`, then run `verify`. A pre
 code or data, so it never copies bytes from the original. For i386 objects, grind also tries
 renaming `ebx`, `esi`, and `edi`, which every calling convention preserves, and may save a
 `registers` rename beside the prelude when only register allocation differs. Add-ons listed in
-`toolchain.tools`, such as `msvc-4x` for MSVC 4.x instruction order, propose rewrites too, and grind
+`toolchain.tools`, such as `msvc-4x` for MSVC 4.x instruction order, register choice, and operand order, propose rewrites too, and grind
 saves one under `rewrite` only when it makes the function match. After editing a shared header or
 other source, `rbit --json repair` drops each saved prelude the build no longer needs.
 

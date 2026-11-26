@@ -112,22 +112,63 @@ wherever they named `edx`, along with its `cx`, `cl`, or `ch` forms. It proposes
 rebuilds the reference when both functions hold the same instructions, which differ only in
 the registers their operands name.
 
-The map is checked before anything is written:
+The map is checked before anything is written. Each renamed register is named by an operand
+of its instruction, and neither side is `esp`. No two registers an instruction uses become
+one. The renamed instruction encodes at the same length, keeps its relocated fields, and reads
+and writes exactly the renamed registers of the original. The renamed function must then pass
+the correspondence check below.
 
-- each renamed register is named by an operand of its instruction, and neither side is `esp`;
-- no two registers an instruction uses become one;
-- the renamed instruction encodes at the same length, keeps its relocated fields, and reads and
-  writes exactly the renamed registers of the original;
-- every renamed instruction finds each input where the original's value now lives, on every
-  path that reaches it;
+### `exchange`
+
+`exchange --symbol <name> --at <i,j,…>` rewrites the short run that starts at each listed
+instruction into the other of two forms that compute the same values:
+
+| Run at `i` | Becomes | Clobbers |
+| --- | --- | --- |
+| `fld X` then `fadd Y` or `fmul Y`, of one width | `fld Y` then `fadd X` or `fmul X` | nothing |
+| `cmp a, b` then `jb`, `jae`, `je`, `jne`, `jbe`, `ja`, `jl`, `jge`, `jle`, or `jg` | `cmp b, a` then the mirrored branch, such as `jg` for `jl` | every flag the compare sets but `ZF` |
+| `mov r, [A]`, `cmp [B], r`, then `je` or `jne` | `mov r, [B]`, `cmp [A], r` | `r`, and every flag but `ZF` |
+
+A compare flips its opcode's direction; `i:fields` instead swaps the `ModRM` fields of a
+compare of two registers, the encoding MSVC writes for `cmp r32, r32`. Control may enter a run
+only at its first instruction: a branch target, a place another section names, or a line
+record inside it refuses the run. Relocated fields must keep their bytes and place. The new run
+must read and write the same registers and flags as the old one, and the result must pass the
+correspondence check with the run's clobbers dead, meaning nothing reads them before they are
+written again. `propose` finds the sites whose new runs match the reference.
+
+Addition and multiplication commute exactly, also after x87 rounding. The one difference is in
+NaN payloads: when both operands are NaNs, which payload the result carries can depend on
+which one was loaded first.
+
+### The correspondence check
+
+`rename` and `exchange` share one check, Lean Theorem 3 (`rename_sound`). For every
+instruction it computes which new register or flag holds which original value, starting from
+the original values at the function's start and at every place another section's relocation
+names, and joining the paths that meet. It then requires:
+
+- every instruction finds each input where the original's value now lives, on every path that
+  reaches it;
 - when the function leaves, the registers its caller sees hold the original's values: `eax`,
   `edx`, `ebx`, `esp`, `ebp`, `esi`, and `edi` at a `ret`, and every general register at a tail
   call or at the end of the code.
 
 Calls follow the i386 calling conventions: a call reads `ecx`, `edx`, and the stack, clobbers
-`eax`, `ecx`, and `edx`, and gets `ebx`, `esi`, `edi`, and `ebp` back unchanged. A function
-with a branch out of it other than a tail call, or with a jump through a table, is refused.
-Debug records stay as compiled, so a debugger may show a renamed value in its old register.
+`eax`, `ecx`, `edx`, and the flags, and gets `ebx`, `esi`, `edi`, and `ebp` back unchanged. No
+caller reads the flags a function returns with. A shift by a count that may be zero keeps the
+flags it would set, so it also reads them. A function with a branch out of it other than a
+tail call, or with a jump through a table, is refused. Debug records stay as compiled, so a
+debugger may show a renamed value in its old register.
 
-The check is Lean Theorem 3 (`rename_sound`): a renamed program that passes it ends with the
-same registers the caller sees, from every state.
+### Chains
+
+`rewrite` takes several rewrites in a row and writes the object only when all of them succeed:
+
+```text
+rbit-msvc-4x rewrite f.obj exchange --symbol _f --at 2 rename --symbol _f --map 1:ecx:edx,2:ecx:edx
+```
+
+When no single rewrite rebuilds the reference, `propose` searches chains of up to three. Each
+rewrite but the last may match the reference only in its instructions' forms, whatever
+registers they name, so that a later `rename` finishes it.

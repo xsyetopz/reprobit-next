@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::{addon, function, object};
+use super::{addon, entered, function, object};
 
 /// `mov edx, [esp+4]`
 const LOAD_EDX: [u8; 4] = [0x8b, 0x54, 0x24, 0x04];
@@ -77,6 +77,27 @@ fn a_use_renamed_apart_from_its_definition_is_refused() {
         stderr(&output)
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
+}
+
+#[test]
+fn a_place_entered_from_outside_starts_with_the_original_values() {
+    let dir = tempfile::tempdir().unwrap();
+    // Data names `add edx, edx`, so it may run with any `edx` and `ecx`.
+    let path = entered(
+        dir.path(),
+        "f.obj",
+        &[&LOAD_EDX, &DOUBLE_EDX, &RETURN_EDX, &CLEAR_EDX, &RET],
+        &[],
+        None,
+        Some(4),
+    );
+    let output = rename(&path, "0:edx:ecx,1:edx:ecx,2:edx:ecx");
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("would read ECX where the original read EDX"),
+        "{}",
+        stderr(&output)
+    );
 }
 
 #[test]

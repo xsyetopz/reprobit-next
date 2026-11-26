@@ -88,32 +88,51 @@ computes the operation is an obligation on the Rust code, like the footprints,
 and is not proved in Lean. Faults are outside the model: a moved load that
 faults does so at its new place.
 
-## Theorem 3: per-instruction register renames
+## Theorem 3: point-by-point rewrites
 
 Both programs share their instruction indices and control flow graph. Each
-point holds an old instruction with `reads` and `writes` and its renamed form
-under `rho`. `σ p` lists pairs `(n, o)`: on reaching `p`, the new program's
-register `n` holds the old program's register `o`.
+point holds an old instruction with `reads` and `writes` and its new form
+under `rho`. `kept` lists the writes whose values both forms agree on; the
+rest are clobbers, written with values of the new form's own. `σ p` lists
+pairs `(n, o)`: on reaching `p`, the new program's location `n` holds the old
+program's location `o`.
 
-- `Renamed.Sound`: given inputs equal under `rho`, the renamed instruction
-  writes `rho w` with the value the old one writes to `w`, takes the same
-  successor, and leaves everything else alone.
+- `Renamed.Sound`: given inputs equal under `rho`, the new form writes
+  `rho w` with the value the old one writes to `w` for each `w` in `kept`,
+  takes the same successor, and leaves everything outside its writes alone.
 - `Post i σ`: the pairs that hold after `i`, namely those `i` overwrites on
-  neither side, plus `(rho w, w)` for each write.
+  neither side, plus `(rho w, w)` for each kept write.
 - `Checked`: every point is sound, each read `r` finds `(rho r, r)` in `σ`,
   `σ` at a successor is within `Post` of its predecessor, and at an exit every
   observed register `r` has `(r, r)` in `Post`.
-- `run_agrees` and `rename_sound`: if `Checked` holds and the entry has only
-  identity pairs, the renamed program finishes whenever the old one does, with
-  equal observed registers.
+- `run_agrees`: from states related by `σ p` at a reachable point, the new
+  program finishes whenever the old one does, with equal observed registers.
+  `rename_sound` specialises it to a point with only identity pairs.
 
-`rename::check` in `crates/reprobit-msvc-4x/src/rename.rs` computes `σ` as
-the greatest fixpoint, met by intersection at joins, and checks `reads` and
-`exit`. It observes the registers a caller sees at a `ret`, and all general
-registers at other exits; a superset of the `ret` set, so `Checked` holds with
-`obs` as the `ret` set. `Renamed.Sound` is an obligation on the Rust code, as
-`Respects` is for Theorem 2: `rename::encode` requires every renamed register
-to be an explicit operand, `rho` to be injective on the registers the
-instruction uses, and the re-decoded instruction's footprint to equal `rho` of
-the original's. Flags and memory are never renamed, so they are equal on both
-sides. Calls are modelled by the calling convention, as in Theorem 1.
+`correspond::check` in `crates/reprobit-msvc-4x/src/correspond.rs` computes
+`σ` over the general registers and flags as the greatest fixpoint, met by
+intersection at joins, from identity pairs at the function's start and at
+each place another section enters; `run_agrees` covers a run from any of
+them. It checks `reads` and `exit`, observing the registers a caller sees at
+a `ret` and all general registers at other exits, a superset of the `ret`
+set, so `Checked` holds with `obs` as the `ret` set.
+
+`Renamed.Sound` is an obligation on the Rust code, as `Respects` is for
+Theorem 2:
+
+- `rename::encode` requires every renamed register to be an explicit
+  operand, `rho` to be injective on the locations the instruction uses, and
+  the re-decoded instruction's footprint to equal `rho` of the original's;
+  every write is kept.
+- `exchange` rewrites a run of two or three instructions that only its first
+  enters, which `Point::run` makes one point. Its new form must have the
+  same footprint, and each form's kept writes follow from arithmetic:
+  `fld X; fadd Y` and `fld Y; fadd X` push the same sum, since x87 addition
+  and multiplication commute; `cmp b, a` with the mirrored condition branches
+  as `cmp a, b` does and sets the same `ZF`; and `mov r, [B]; cmp [A], r`
+  sets the same `ZF` as `mov r, [A]; cmp [B], r`, since equality is
+  symmetric. The other flags, and `r` in the last, are clobbers.
+
+Memory and x87 state are never renamed, and every form here writes them
+with the same values. Calls are modelled by the calling convention, as in
+Theorem 1.
