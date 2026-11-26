@@ -56,7 +56,12 @@ impl World {
         fs::create_dir_all(&mirror).expect("mirror dir");
         // Copies its last two arguments, so forced-include flags change nothing.
         let script: &[u8] = if cfg!(windows) {
-            b"@echo off\r\n:next\r\nif not \"%~3\"==\"\" (shift & goto next)\r\ncopy /b /y \"%~1\" \"%~2\" >nul\r\n"
+            concat!(
+                "@echo off\r\n:next\r\nif not \"%~3\"==\"\" (shift & goto next)\r\n",
+                // `copy` reads `/` as a switch; compilers take either separator.
+                "set \"from=%~1\"\r\nset \"to=%~2\"\r\ncopy /b /y \"%from:/=\\%\" \"%to:/=\\%\" >nul\r\n",
+            )
+            .as_bytes()
         } else {
             b"#!/bin/sh\nwhile [ $# -gt 2 ]; do shift; done\ncp \"$1\" \"$2\"\n"
         };
