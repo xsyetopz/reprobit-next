@@ -58,7 +58,7 @@ Each instruction has a read list and a write list.
   for every pair `p` before `q` in `π`, `p < q` or `conflictb` is false.
   `reorderOk_sound`: if it returns `true`, the reordered program
   `π.map (P[·]!)` computes the same final state as `P` from every initial
-  state. `schedule::check` in `crates/msvc-4x/src/schedule.rs` is this
+  state. `schedule::check` in `crates/reprobit-msvc-4x/src/schedule.rs` is this
   function over the add-on's footprints.
 
 The `Respects` hypothesis is a modelling obligation on each instruction set's

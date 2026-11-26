@@ -67,7 +67,7 @@ as = "my-addon"
 
 ## `msvc-4x`
 
-[`crates/msvc-4x`](../crates/msvc-4x) is the reference add-on, for i386 COFF objects from
+[`crates/reprobit-msvc-4x`](../crates/reprobit-msvc-4x) is the reference add-on, for i386 COFF objects from
 MSVC 4.x. Its rewrite `schedule --symbol <name> --order <i,j,…>` writes a function's
 instructions in a new order, numbered from 0 in their current order, and moves each
 relocation with its instruction. It proposes the order that rebuilds the reference when both
