@@ -84,8 +84,15 @@ including `lea`, names its bytes rather than `esp`, so it may cross a `push`, a 
 `add` or `sub esp` by a constant. Its displacement is rewritten so that it addresses the same
 bytes from its new place: `mov edx, [esp+0xc]` moved above `sub esp, 8` becomes
 `mov edx, [esp+0x14]`. A displacement that would outgrow its encoding is refused. Those
-instructions that move `esp` keep their order among themselves. An access through any other
-register may reach any stack byte, so it never crosses a stack access when either one writes.
+instructions that move `esp` keep their order among themselves.
+
+An access through another register reaches the stack only through an address computed from
+`esp`, such as `lea ecx, [esp+8]` or `mov ebp, esp`, or anything computed from those. Such an
+access may reach any stack byte, so it never crosses a stack access when either one writes.
+Every other register holds a pointer the function was given or loaded, which points above the
+stack this function uses, so its accesses cross stack accesses freely. That holds while no
+stack address escapes: when one is stored, pushed, or kept in a register across a call, every
+access through another register may reach any stack byte.
 
 Barriers conflict with everything, so they keep their place and their offset:
 
