@@ -76,11 +76,21 @@ functions hold the same instructions with the same relocations.
 The order is checked before anything is written. It must list every instruction once, and
 any two instructions it puts out of program order must not conflict, meaning neither writes
 a location the other reads or writes. Locations are the 32-bit general registers, each flag,
-memory as one location, and the x87 and SSE state. A partial or conditional write also reads
-its location, and so does an instruction that leaves a flag undefined. Barriers conflict with
-everything, so they keep their place and their offset:
+each stack byte, the rest of memory, and the x87 and SSE state. A partial or conditional write
+also reads its location, and so does an instruction that leaves a flag undefined.
+
+Stack bytes are numbered by their offset from `esp` at the last barrier. An `[esp+d]` operand,
+including `lea`, names its bytes rather than `esp`, so it may cross a `push`, a `pop`, or an
+`add` or `sub esp` by a constant. Its displacement is rewritten so that it addresses the same
+bytes from its new place: `mov edx, [esp+0xc]` moved above `sub esp, 8` becomes
+`mov edx, [esp+0x14]`. A displacement that would outgrow its encoding is refused. Those
+instructions that move `esp` keep their order among themselves. An access through any other
+register may reach any stack byte, so it never crosses a stack access when either one writes.
+
+Barriers conflict with everything, so they keep their place and their offset:
 
 - branches, calls, returns, privileged and locked instructions;
+- instructions that set `esp` other than by a constant, such as `leave`;
 - branch targets inside the function;
 - places other records name: relocations from other sections, COFF line numbers,
   `CodeView` 4 procedure starts, ends, and block ends, and the end of an FPO prologue.
