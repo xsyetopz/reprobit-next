@@ -268,8 +268,9 @@ fn a_longer_base_takes_the_padding_and_its_branch_follows() {
 }
 
 /// An object whose `.text` holds `_f`, `code`, then `_h`, `mov eax, [_g]`
-/// and `ret`, with a `DIR32` relocation to `_g` in `_h` and FPO data that
-/// holds `_f`'s size.
+/// and `ret`, with a `DIR32` relocation to `_g` in `_h`, FPO data that
+/// holds `_f`'s size, and a `.lf` symbol whose value 2 counts `_f`'s lines,
+/// as MSVC writes it.
 fn followed(dir: &Path, name: &str, code: &[&[u8]]) -> std::path::PathBuf {
     let mut file = Object::new(BinaryFormat::Coff, Architecture::I386, Endianness::Little);
     file.set_mangling(Mangling::None);
@@ -289,6 +290,7 @@ fn followed(dir: &Path, name: &str, code: &[&[u8]]) -> std::path::PathBuf {
     let function = file.add_symbol(symbol(b"_f", 0, SymbolSection::Section(text)));
     let after = u64::try_from(code.len()).unwrap();
     file.add_symbol(symbol(b"_h", after, SymbolSection::Section(text)));
+    file.add_symbol(symbol(b".lf", 2, SymbolSection::Section(text)));
     let global = file.add_symbol(symbol(b"_g", 0, SymbolSection::Undefined));
     file.add_relocation(
         text,
@@ -319,7 +321,16 @@ fn followed(dir: &Path, name: &str, code: &[&[u8]]) -> std::path::PathBuf {
     )
     .unwrap();
     let path = dir.join(name);
-    std::fs::write(&path, file.write().unwrap()).unwrap();
+    let mut bytes = file.write().unwrap();
+    let table = usize::try_from(u32::from_le_bytes(bytes[8..12].try_into().unwrap())).unwrap();
+    let count = usize::try_from(u32::from_le_bytes(bytes[12..16].try_into().unwrap())).unwrap();
+    let lines = (0..count)
+        .map(|index| table + index * 18)
+        .find(|&at| bytes[at..at + 8] == *b".lf\0\0\0\0\0")
+        .unwrap();
+    // `C_FCN`, the storage class of `.bf`, `.lf`, and `.ef`.
+    bytes[lines + 16] = 101;
+    std::fs::write(&path, bytes).unwrap();
     path
 }
 
@@ -392,47 +403,5 @@ fn propose_finds_a_rename_that_changes_the_length() {
             "--map",
             "0:ebx:ebp,2:ebx:ebp,4:ebx:ebp"
         ]]
-    );
-}
-
-#[test]
-fn a_rename_in_an_object_from_msvc_undoes_through_its_proposal() {
-    let dir = tempfile::tempdir().unwrap();
-    let reference =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/grind/reference/reference.obj");
-    let built = dir.path().join("built.obj");
-    std::fs::copy(&reference, &built).unwrap();
-    // `ebx` and `ebp` trade places from the loop's second load to its first
-    // `add`, in a function with line numbers, `.lf`, CodeView, and FPO data.
-    let swap = |path: &Path, map: &str| {
-        addon(&[
-            "rewrite",
-            path.to_str().unwrap(),
-            "rename",
-            "--symbol",
-            "_transform",
-            "--map",
-            map,
-        ])
-    };
-    let output = swap(
-        &built,
-        "14:ebp:ebx,15:ebp:ebx,18:ebx:ebp,19:ebx:ebp,21:ebx:ebp,21:ebp:ebx,22:ebx:ebp",
-    );
-    assert!(output.status.success(), "{}", stderr(&output));
-    let output = addon(&[
-        "propose",
-        built.to_str().unwrap(),
-        reference.to_str().unwrap(),
-        "_transform",
-    ]);
-    let proposals: Vec<Vec<String>> = serde_json::from_slice(&output.stdout).unwrap();
-    let [proposal] = &proposals[..] else {
-        panic!("{proposals:?}");
-    };
-    assert!(swap(&built, &proposal[4]).status.success());
-    assert_eq!(
-        std::fs::read(&built).unwrap(),
-        std::fs::read(&reference).unwrap()
     );
 }
