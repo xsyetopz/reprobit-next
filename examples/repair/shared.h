@@ -1,7 +1,0 @@
-#ifndef REPROBIT_REPAIR_SHARED_H
-#define REPROBIT_REPAIR_SHARED_H
-
-#define REPAIR_IDENTITY(value) (value)
-#define REPAIR_SUPPORT_BIAS 1
-
-#endif
