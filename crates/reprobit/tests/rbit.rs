@@ -1,10 +1,8 @@
 #![cfg(test)]
-// The fake compiler is a POSIX shell script.
-#![cfg(unix)]
 //! Behaviour of the `rbit` binary, driven the way people and agents drive it:
 //! command lines in, exit codes and `--json` out. Every test gets a private
-//! tool home and a catalog whose only compiler is a local shell script, so no
-//! test touches the network or the user's installed tools.
+//! tool home and a catalog whose only compiler is a local script, so no test
+//! touches the network or the user's installed tools.
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -46,6 +44,9 @@ artifact = "app.bin"
 reference = "reference/app.bin"
 "#;
 
+/// The fake compiler's file: a batch file on Windows, a shell script elsewhere.
+const COMPILER: &str = if cfg!(windows) { "cc.cmd" } else { "cc" };
+
 impl World {
     /// A world whose catalog pins the fake compiler with `sha256`, or with
     /// its real digest when `None`.
@@ -54,13 +55,17 @@ impl World {
         let mirror = temp.path().join("mirror");
         fs::create_dir_all(&mirror).expect("mirror dir");
         // Copies its last two arguments, so forced-include flags change nothing.
-        let script = b"#!/bin/sh\nwhile [ $# -gt 2 ]; do shift; done\ncp \"$1\" \"$2\"\n";
-        fs::write(mirror.join("cc"), script).expect("compiler script");
+        let script: &[u8] = if cfg!(windows) {
+            b"@echo off\r\n:next\r\nif not \"%~3\"==\"\" (shift & goto next)\r\ncopy /b /y \"%~1\" \"%~2\" >nul\r\n"
+        } else {
+            b"#!/bin/sh\nwhile [ $# -gt 2 ]; do shift; done\ncp \"$1\" \"$2\"\n"
+        };
+        fs::write(mirror.join(COMPILER), script).expect("compiler script");
         let pin = sha256.map_or_else(|| hex::encode(Sha256::digest(script)), str::to_owned);
         let catalog = format!(
-            "[tools.fake-cc]\nkind = \"compiler\"\nsummary = \"Copies its input\"\nversion = \"1\"\nruns = \"host\"\nbin = {{ cc = \"cc\" }}\nforce-include = [\"-include\", \"{{}}\"]\n\
-             [[tools.fake-cc.get]]\nurl = {url:?}\nsha256 = \"{pin}\"\nas = \"cc\"\n",
-            url = mirror.join("cc").display().to_string(),
+            "[tools.fake-cc]\nkind = \"compiler\"\nsummary = \"Copies its input\"\nversion = \"1\"\nruns = \"host\"\nbin = {{ cc = \"{COMPILER}\" }}\nforce-include = [\"-include\", \"{{}}\"]\n\
+             [[tools.fake-cc.get]]\nurl = {url:?}\nsha256 = \"{pin}\"\nas = \"{COMPILER}\"\n",
+            url = mirror.join(COMPILER).display().to_string(),
         );
         fs::write(temp.path().join("catalog.toml"), catalog).expect("catalog");
         let project = temp.path().join("project");
@@ -146,7 +151,10 @@ fn a_command_nested_in_an_app_bundle_is_found_by_its_name() {
     let world = World::new();
     let catalog = world.temp.path().join("catalog.toml");
     let text = fs::read_to_string(&catalog).expect("catalog");
-    let nested = text.replace("as = \"cc\"", "as = \"Fake.app/Contents/MacOS/cc\"");
+    let nested = text.replace(
+        &format!("as = \"{COMPILER}\""),
+        &format!("as = \"Fake.app/Contents/MacOS/{COMPILER}\""),
+    );
     fs::write(&catalog, nested).expect("catalog");
 
     succeeds(&world.rbit(&["tool", "install", "fake-cc"]));
@@ -155,7 +163,10 @@ fn a_command_nested_in_an_app_bundle_is_found_by_its_name() {
         .expect("path")
         .to_owned();
 
-    assert!(which.ends_with("Fake.app/Contents/MacOS/cc"), "{which}");
+    assert!(
+        Path::new(&which).ends_with(format!("Fake.app/Contents/MacOS/{COMPILER}")),
+        "{which}"
+    );
 }
 
 #[test]
