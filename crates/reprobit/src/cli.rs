@@ -93,7 +93,7 @@ pub(crate) enum Command {
         /// The reference object holding the original function.
         #[arg(long)]
         reference_object: PathBuf,
-        /// Families to try: shape, pad, forward, extern, registers. Default: all.
+        /// Families to try: shape, pad, forward, extern, registers, or an add-on id. Default: all.
         #[arg(long = "family")]
         families: Vec<String>,
         /// Most candidates to compile.

@@ -11,12 +11,13 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::Serialize;
 use serde_json::json;
 
+use crate::addon::Addon;
 use crate::catalog::Catalog;
 use crate::project::{LOCK, Loaded, Prelude, Step};
 use crate::rewrite;
 use crate::runner::{Mode, Stage};
 use crate::tools::{self, Installed};
-use crate::{binary, digest, ui};
+use crate::{binary, digest, grind, ui};
 
 /// What one step read and wrote.
 #[derive(Debug, Clone, Serialize)]
@@ -31,6 +32,10 @@ pub(crate) struct StepReceipt {
     pub(crate) inputs: BTreeMap<String, String>,
     /// SHA-256 of each output, keyed by build-relative path.
     pub(crate) outputs: BTreeMap<String, String>,
+    /// What besides the compiler shaped the outputs: the prelude, register
+    /// renames, and add-on rewrites, each with the add-on's content digest.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) adjustments: Vec<String>,
 }
 
 /// A finished build.
@@ -81,11 +86,9 @@ pub(crate) fn locked(root: &Path) -> Result<BTreeMap<String, String>> {
         }))
 }
 
-/// Runs every step into `stage_root`. With `cache`, unchanged steps are
-/// restored from the developer cache instead of being run.
-pub(crate) fn run(loaded: &Loaded, stage_root: &Path, cache: bool) -> Result<Built> {
-    let catalog = Catalog::load()?;
-    let compiler = compiler(loaded, &catalog)?;
+/// A stage at `root` holding the files the producer may see, and the
+/// digest of the project's headers.
+pub(crate) fn stage(loaded: &Loaded, compiler: &Installed, root: &Path) -> Result<(Stage, String)> {
     let project = &loaded.project;
     let mode = Mode::pick(
         project
@@ -97,7 +100,7 @@ pub(crate) fn run(loaded: &Loaded, stage_root: &Path, cache: bool) -> Result<Bui
     )?;
     let (headers, sources) = sources(loaded)?;
     let stage = Stage::create(
-        stage_root,
+        root,
         &loaded.root,
         &sources,
         &compiler.root,
@@ -105,6 +108,16 @@ pub(crate) fn run(loaded: &Loaded, stage_root: &Path, cache: bool) -> Result<Bui
         mode,
         &loaded.state(),
     )?;
+    Ok((stage, headers))
+}
+
+/// Runs every step into `stage_root`. With `cache`, unchanged steps are
+/// restored from the developer cache instead of being run.
+pub(crate) fn run(loaded: &Loaded, stage_root: &Path, cache: bool) -> Result<Built> {
+    let catalog = Catalog::load()?;
+    let compiler = compiler(loaded, &catalog)?;
+    let project = &loaded.project;
+    let (stage, headers) = stage(loaded, &compiler, stage_root)?;
     let mut receipts = Vec::new();
     let total = project.steps.len();
     for (index, step) in project.steps.iter().enumerate() {
@@ -156,33 +169,12 @@ pub(crate) fn run_step(
         );
     }
     let (program, inside, tool_tree) = resolve(catalog, compiler, &step.program)?;
-    let mut args = step.args.clone();
-    if let Some(prelude) = &step.prelude {
-        ensure!(
-            !compiler.tool.force_include.is_empty(),
-            "{} declares no force-include flag, so preludes cannot be used",
-            compiler.receipt.id
-        );
-        let relative = format!("prelude/{}.h", step.id);
-        let path = build.join(&relative);
-        fs::create_dir_all(path.parent().context("prelude path")?)?;
-        fs::write(&path, prelude.render())?;
-        // Compilers resolve a forced include like `#include "…"`, from the
-        // source's directory, so the path is spelled from the build root.
-        let spelled = if stage.mode().dos() {
-            format!("${{BUILD}}\\prelude\\{}.h", step.id)
-        } else {
-            format!("${{BUILD}}/{relative}")
-        };
-        let mut flags: Vec<String> = compiler
-            .tool
-            .force_include
-            .iter()
-            .map(|flag| flag.replace("{}", &spelled))
-            .collect();
-        flags.append(&mut args);
-        args = flags;
-    }
+    let args = with_prelude(compiler, stage, step)?;
+    let addons = step
+        .rewrite
+        .iter()
+        .map(|rewrite| Addon::open(catalog, loaded, &rewrite.addon))
+        .collect::<Result<Vec<_>>>()?;
     let mut env = compiler.tool.env.clone();
     env.extend(step.env.clone());
     // `args` carry only the prelude's path, so its text joins the key.
@@ -190,6 +182,7 @@ pub(crate) fn run_step(
         json!({
             "program": step.program, "tool": tool_tree, "args": args, "env": env,
             "prelude": step.prelude.as_ref().map(Prelude::render), "registers": step.registers, "rbit": env!("CARGO_PKG_VERSION"),
+            "rewrite": step.rewrite, "addons": addons.iter().map(|addon| &addon.tree).collect::<Vec<_>>(),
             "inputs": inputs, "headers": headers, "runner": stage.mode().name(), "outputs": step.outputs,
         })
         .to_string()
@@ -224,6 +217,11 @@ pub(crate) fn run_step(
                 .with_context(|| format!("step {}", step.id))?;
             fs::write(&path, renamed)?;
         }
+        for (addon, rewrite) in addons.iter().zip(&step.rewrite) {
+            addon
+                .rewrite(&build.join(step.object()?), &rewrite.args)
+                .with_context(|| format!("step {}", step.id))?;
+        }
     }
     let mut outputs = BTreeMap::new();
     for output in &step.outputs {
@@ -240,7 +238,66 @@ pub(crate) fn run_step(
         cached,
         inputs,
         outputs,
+        adjustments: adjustments(step, &addons),
     })
+}
+
+/// The step's arguments, after the force-include flags that load its
+/// prelude, which this writes into the build tree.
+fn with_prelude(compiler: &Installed, stage: &Stage, step: &Step) -> Result<Vec<String>> {
+    let mut args = step.args.clone();
+    let build = stage.build();
+    if let Some(prelude) = &step.prelude {
+        ensure!(
+            !compiler.tool.force_include.is_empty(),
+            "{} declares no force-include flag, so preludes cannot be used",
+            compiler.receipt.id
+        );
+        let relative = format!("prelude/{}.h", step.id);
+        let path = build.join(&relative);
+        fs::create_dir_all(path.parent().context("prelude path")?)?;
+        fs::write(&path, prelude.render())?;
+        // Compilers resolve a forced include like `#include "…"`, from the
+        // source's directory, so the path is spelled from the build root.
+        let spelled = if stage.mode().dos() {
+            format!("${{BUILD}}\\prelude\\{}.h", step.id)
+        } else {
+            format!("${{BUILD}}/{relative}")
+        };
+        let mut flags: Vec<String> = compiler
+            .tool
+            .force_include
+            .iter()
+            .map(|flag| flag.replace("{}", &spelled))
+            .collect();
+        flags.append(&mut args);
+        args = flags;
+    }
+    Ok(args)
+}
+
+/// What besides the compiler shaped the step's outputs, for its receipt.
+fn adjustments(step: &Step, addons: &[Addon]) -> Vec<String> {
+    let prelude = step
+        .prelude
+        .iter()
+        .map(|prelude| format!("prelude {}", grind::describe(prelude)));
+    let registers = step.registers.iter().map(|(symbol, registers)| {
+        let renames: Vec<String> = registers
+            .iter()
+            .map(|(from, to)| format!("{from}->{to}"))
+            .collect();
+        format!("registers {symbol} {}", renames.join(" "))
+    });
+    let rewrites = addons.iter().zip(&step.rewrite).map(|(addon, rewrite)| {
+        format!(
+            "rewrite {} {} (sha256 {})",
+            rewrite.addon,
+            rewrite.args.join(" "),
+            addon.tree
+        )
+    });
+    prelude.chain(registers).chain(rewrites).collect()
 }
 
 /// Finds a step's program: a compiler command, `tool:command` from another

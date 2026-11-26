@@ -193,6 +193,28 @@
         }
       ]
     },
+    "Rewrite": {
+      "description": "One add-on rewrite: `<addon> rewrite <object> <args>…`.",
+      "type": "object",
+      "properties": {
+        "addon": {
+          "description": "The add-on's catalog id, which `toolchain.tools` must list.",
+          "type": "string"
+        },
+        "args": {
+          "description": "Arguments after the object path.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "addon"
+      ]
+    },
     "Step": {
       "description": "One producer invocation.",
       "type": "object",
@@ -256,6 +278,13 @@
             "additionalProperties": {
               "type": "string"
             }
+          }
+        },
+        "rewrite": {
+          "description": "Add-on rewrites applied in order to the step's object after it\ncompiles and after `registers`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Rewrite"
           }
         }
       },

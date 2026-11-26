@@ -33,7 +33,8 @@ pub(crate) struct Catalog {
 #[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(crate) struct Tool {
-    /// `compiler`, `tool`, or `runtime` (something other tools run on, like Wine).
+    /// `compiler`, `tool`, `runtime` (something other tools run on, like Wine),
+    /// or `addon` (a program that rewrites objects; see `docs/addons.md`).
     #[serde(default = "default_kind")]
     pub(crate) kind: String,
     /// One line on what it is for.

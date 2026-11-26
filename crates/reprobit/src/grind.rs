@@ -10,11 +10,11 @@ use std::path::Path;
 use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 
+use crate::addon::Addon;
 use crate::build;
 use crate::catalog::Catalog;
-use crate::project::{Loaded, Prelude};
+use crate::project::{Loaded, Prelude, Rewrite};
 use crate::rewrite::{self, Registers};
-use crate::runner::{Mode, Stage};
 use crate::ui;
 use crate::{binary, verify};
 
@@ -40,6 +40,8 @@ pub(crate) struct Match {
     pub(crate) prelude: Option<Prelude>,
     /// Registers renamed after the compile; empty for none.
     pub(crate) registers: Registers,
+    /// Add-on rewrites to append to the step; empty for none.
+    pub(crate) rewrite: Vec<Rewrite>,
 }
 
 /// Every candidate in the given families, smallest rendering first.
@@ -89,25 +91,7 @@ pub(crate) fn grind(
     let wanted = binary::function(&reference, symbol).context("in the reference object")?;
     let catalog = Catalog::load()?;
     let compiler = build::compiler(loaded, &catalog)?;
-    let mode = Mode::pick(
-        loaded
-            .project
-            .toolchain
-            .runs
-            .as_ref()
-            .unwrap_or(&compiler.tool.runs),
-        &loaded.project.toolchain.runner,
-    )?;
-    let (headers, sources) = build::sources(loaded)?;
-    let stage = Stage::create(
-        &loaded.state().join("grind"),
-        &loaded.root,
-        &sources,
-        &compiler.root,
-        &loaded.project.paths(mode.dos()),
-        mode,
-        &loaded.state(),
-    )?;
+    let (stage, headers) = build::stage(loaded, &compiler, &loaded.state().join("grind"))?;
     let mut outcome = Outcome {
         step: step_id.into(),
         symbol: symbol.into(),
@@ -119,7 +103,17 @@ pub(crate) fn grind(
     let current = Match {
         prelude: step.prelude.clone(),
         registers: step.registers.get(symbol).cloned().unwrap_or_default(),
+        rewrite: Vec::new(),
     };
+    let addons: Vec<Addon> = Addon::all(&catalog, loaded)?
+        .into_iter()
+        .filter(|addon| families.is_empty() || families.iter().any(|family| family == addon.id()))
+        .collect();
+    let reference_path = loaded.root.join(reference_object);
+    let proposal = loaded.state().join("grind").join(format!(
+        "proposal.{}",
+        object.rsplit('.').next().unwrap_or("obj")
+    ));
     let current_prelude = current.prelude.clone();
     let queue = std::iter::once(current_prelude.clone()).chain(
         candidates(families)
@@ -144,23 +138,24 @@ pub(crate) fn grind(
         let Ok(function) = binary::function(&built, symbol) else {
             continue;
         };
-        let registers = if function == wanted {
-            Some(Registers::new())
-        } else if renames && function.relocations == wanted.relocations {
-            let allowed = rewrite::renamable(&built).unwrap_or_default();
-            rewrite::permutations(allowed)
-                .into_iter()
-                .find(|registers| {
-                    rewrite::rename(&function, registers, allowed)
-                        .is_ok_and(|bytes| bytes == wanted.bytes)
-                })
-        } else {
-            None
+        let registers = matching_registers(&built, &function, &wanted, renames);
+        let fix = match registers {
+            Some(registers) => Some((registers, Vec::new())),
+            None => propose(
+                &addons,
+                &stage.build().join(&object),
+                &reference_path,
+                &proposal,
+                symbol,
+                &wanted,
+            )?
+            .map(|rewrite| (Registers::new(), vec![rewrite])),
         };
-        if let Some(registers) = registers {
+        if let Some((registers, rewrite)) = fix {
             let found = Match {
                 prelude: candidate,
                 registers,
+                rewrite,
             };
             if found == current {
                 outcome.already_matches = true;
@@ -174,9 +169,61 @@ pub(crate) fn grind(
     if accept && let Some(found) = &outcome.found {
         loaded.set_prelude(step_id, found.prelude.as_ref())?;
         loaded.set_registers(step_id, symbol, &found.registers)?;
+        if !found.rewrite.is_empty() {
+            loaded.add_rewrites(step_id, &found.rewrite)?;
+        }
         outcome.accepted = true;
     }
     Ok(outcome)
+}
+
+/// The register renames, none when it already matches, that turn `function`
+/// from `built` into `wanted`.
+fn matching_registers(
+    built: &[u8],
+    function: &binary::Function,
+    wanted: &binary::Function,
+    renames: bool,
+) -> Option<Registers> {
+    if function == wanted {
+        return Some(Registers::new());
+    }
+    if !renames || function.relocations != wanted.relocations {
+        return None;
+    }
+    let allowed = rewrite::renamable(built).unwrap_or_default();
+    rewrite::permutations(allowed)
+        .into_iter()
+        .find(|registers| {
+            rewrite::rename(function, registers, allowed).is_ok_and(|bytes| bytes == wanted.bytes)
+        })
+}
+
+/// The first add-on rewrite that makes `symbol` in `built` match `wanted`,
+/// tried on a copy at `scratch`.
+fn propose(
+    addons: &[Addon],
+    built: &Path,
+    reference: &Path,
+    scratch: &Path,
+    symbol: &str,
+    wanted: &binary::Function,
+) -> Result<Option<Rewrite>> {
+    for addon in addons {
+        for args in addon.propose(built, reference, symbol)? {
+            fs::copy(built, scratch)?;
+            if addon.rewrite(scratch, &args).is_ok()
+                && binary::function(&fs::read(scratch)?, symbol)
+                    .is_ok_and(|function| &function == wanted)
+            {
+                return Ok(Some(Rewrite {
+                    addon: addon.id().to_owned(),
+                    args,
+                }));
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// What `rbit repair` changed.
@@ -240,15 +287,22 @@ pub(crate) fn describe_match(found: &Match) -> String {
         .prelude
         .as_ref()
         .map_or_else(|| "no prelude".to_owned(), describe);
-    if found.registers.is_empty() {
-        return prelude;
+    let mut parts = vec![prelude];
+    if !found.registers.is_empty() {
+        let renames: Vec<String> = found
+            .registers
+            .iter()
+            .map(|(from, to)| format!("{from}->{to}"))
+            .collect();
+        parts.push(format!("registers {}", renames.join(" ")));
     }
-    let renames: Vec<String> = found
-        .registers
-        .iter()
-        .map(|(from, to)| format!("{from}->{to}"))
-        .collect();
-    format!("{prelude}, registers {}", renames.join(" "))
+    parts.extend(
+        found
+            .rewrite
+            .iter()
+            .map(|rewrite| format!("{} {}", rewrite.addon, rewrite.args.join(" "))),
+    );
+    parts.join(", ")
 }
 
 /// A one-line description of a prelude.

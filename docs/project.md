@@ -145,6 +145,16 @@ as a frame addressed from `ebx` or a DWARF entry value that names a renamed regi
 `rbit grind` tries every rename on each candidate prelude, so it finds a prelude and a rename
 together; `--family registers` alone tries renames without a new prelude.
 
+## Rewrites
+
+`rewrite` lists [add-on](addons.md) rewrites that run on the step's object after it compiles
+and after its register renames, in order. `rbit grind` saves one when an add-on proposes it and
+it makes the function match.
+
+```toml
+rewrite = [{ addon = "msvc-4x", args = ["schedule", "--symbol", "_transform", "--order", "1,0,2,3"] }]
+```
+
 ## Lock
 
 `rbit setup` writes `reprobit.lock` with each tool's version and the SHA-256 of its installed

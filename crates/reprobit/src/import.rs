@@ -112,6 +112,7 @@ fn step(entry: Entry, root: &Path) -> Result<Step> {
         env: BTreeMap::new(),
         prelude: None,
         registers: BTreeMap::new(),
+        rewrite: Vec::new(),
     })
 }
 
