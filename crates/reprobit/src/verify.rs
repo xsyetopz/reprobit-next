@@ -54,6 +54,8 @@ pub(crate) struct Comparison {
     /// Normalizations applied to both sides, and the fields they cleared.
     pub(crate) normalized: Vec<String>,
     pub(crate) normalized_fields: usize,
+    /// Fields written into the artifact after the build, with their values.
+    pub(crate) stamped: std::collections::BTreeMap<String, u32>,
     /// The first runs of differing bytes, after normalization.
     pub(crate) differences: Vec<Difference>,
 }
@@ -116,6 +118,7 @@ fn compare_one(loaded: &Loaded, target: &Target, build: &Path) -> Result<Compari
         reference_sha256,
         normalized: target.normalize.clone(),
         normalized_fields,
+        stamped: target.stamp.clone(),
         differences: binary::differences(&artifact, &reference, 16),
     })
 }
@@ -168,17 +171,22 @@ fn html(report: &Report) -> Result<String> {
             .differences
             .iter()
             .map(|item| {
-                format!(
+                escape(&format!(
                     "{:#x}+{} {}",
                     item.offset,
                     item.length,
                     item.section.as_deref().unwrap_or("")
-                )
+                ))
             })
+            .collect();
+        let stamped: Vec<String> = target
+            .stamped
+            .iter()
+            .map(|(name, value)| format!("{name} = {value:#x}"))
             .collect();
         writeln!(
             rows,
-            "<tr><td>{}</td><td>{}</td><td>{} / {}</td><td><code>{}</code></td><td><code>{}</code></td><td>{} ({} fields)</td><td>{}</td></tr>",
+            "<tr><td>{}</td><td>{}</td><td>{} / {}</td><td><code>{}</code></td><td><code>{}</code></td><td>{} ({} fields)<br>{}</td><td>{}</td></tr>",
             escape(&target.id),
             if target.identical {
                 "identical"
@@ -191,7 +199,8 @@ fn html(report: &Report) -> Result<String> {
             target.reference_sha256,
             escape(&target.normalized.join(", ")),
             target.normalized_fields,
-            escape(&differences.join("<br>")),
+            escape(&stamped.join(", ")),
+            differences.join("<br>"),
         )?;
     }
     let mut steps = String::new();
@@ -215,7 +224,7 @@ fn html(report: &Report) -> Result<String> {
 <style>body{{font:14px system-ui;margin:2rem;max-width:80rem}}td,th{{border-bottom:1px solid #ddd;padding:.3rem;text-align:left;vertical-align:top}}table{{border-collapse:collapse}}code{{font-size:12px}}</style>\
 <h1>{name}: {verdict}</h1><p>Built from scratch by <b>{compiler} {version}</b> (content <code>{tree}</code>) under <b>{runner}</b>. \
 The producer saw only the declared inputs below; references were read only by the comparison.</p>\
-<h2>Targets</h2><table><tr><th>Target</th><th>Result</th><th>Size / reference</th><th>Rebuilt SHA-256</th><th>Reference SHA-256</th><th>Normalized</th><th>First differences</th></tr>{rows}</table>\
+<h2>Targets</h2><table><tr><th>Target</th><th>Result</th><th>Size / reference</th><th>Rebuilt SHA-256</th><th>Reference SHA-256</th><th>Normalized / stamped</th><th>First differences</th></tr>{rows}</table>\
 <h2>Steps</h2><table><tr><th>Step</th><th>Inputs</th><th>Outputs</th></tr>{steps}</table>\n",
         name = escape(&report.project),
         compiler = escape(&report.compiler.id),

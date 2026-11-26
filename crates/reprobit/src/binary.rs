@@ -8,6 +8,29 @@ use serde::Serialize;
 /// The normalizations a target may name.
 pub(crate) const NORMALIZATIONS: &[&str] = &["pe-timestamps", "pe-checksum", "build-id"];
 
+/// The fields a target may stamp.
+pub(crate) const STAMPS: &[&str] = &["pe-timestamp", "pe-checksum"];
+
+/// Writes each declared field value into `bytes`.
+pub(crate) fn stamp(
+    bytes: &mut [u8],
+    fields: &std::collections::BTreeMap<String, u32>,
+) -> Result<()> {
+    for (name, value) in fields {
+        let (pe, _) = pe_sections(bytes).with_context(|| format!("{name} needs a PE image"))?;
+        let at = match name.as_str() {
+            "pe-timestamp" => pe + 8,
+            "pe-checksum" => pe + 24 + 64,
+            other => bail!("unknown stamp {other}; known: {}", STAMPS.join(", ")),
+        };
+        bytes
+            .get_mut(at..at + 4)
+            .context("the PE header is truncated")?
+            .copy_from_slice(&value.to_le_bytes());
+    }
+    Ok(())
+}
+
 /// Applies the named normalizations to `bytes` and returns how many fields changed.
 pub(crate) fn normalize(bytes: &mut [u8], names: &[String]) -> Result<usize> {
     let mut changed = 0;

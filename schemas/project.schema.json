@@ -286,6 +286,16 @@
             "null"
           ],
           "default": null
+        },
+        "stamp": {
+          "description": "Values written into the built artifact after the last step, such as\n`{ pe-timestamp = 0x3f3a5c1e }` for the original's link time. Unlike\n`normalize`, the artifact itself then matches. Each value is declared\nhere for review; nothing is read from the reference.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "default": {}
         }
       },
       "additionalProperties": false,

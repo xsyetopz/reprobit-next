@@ -350,6 +350,48 @@ fn build_id_normalization_ignores_only_the_link_identity() {
     assert_eq!(world.rbit(&["verify"]).code, 1);
 }
 
+/// A section-less 32-bit PE image linked at `timestamp`.
+fn pe_image(timestamp: u32) -> Vec<u8> {
+    let mut image = vec![0; 0x40 + 24 + 96];
+    image[..2].copy_from_slice(b"MZ");
+    image[0x3c] = 0x40;
+    image[0x40..0x44].copy_from_slice(b"PE\0\0");
+    image[0x44..0x46].copy_from_slice(&0x14c_u16.to_le_bytes());
+    image[0x48..0x4c].copy_from_slice(&timestamp.to_le_bytes());
+    image[0x54] = 96;
+    image[0x58..0x5a].copy_from_slice(&0x10b_u16.to_le_bytes());
+    image
+}
+
+#[test]
+fn a_stamped_link_time_makes_the_artifact_itself_match() {
+    let world = World::new();
+    fs::write(world.project().join("main.c"), pe_image(1)).expect("built image");
+    fs::write(
+        world.project().join("reference/app.bin"),
+        pe_image(0x3f3a_5c1e),
+    )
+    .expect("reference");
+    succeeds(&world.rbit(&["setup"]));
+    assert_eq!(world.rbit(&["verify"]).code, 1);
+
+    let project = fs::read_to_string(world.project().join("reprobit.toml")).expect("project");
+    world.edit(
+        "reprobit.toml",
+        &format!("{project}stamp = {{ pe-timestamp = 0x3f3a5c1e }}\n"),
+    );
+    let verified = world.rbit(&["verify"]);
+    let target = &succeeds(&verified)["targets"][0];
+    assert_eq!(target["artifact_sha256"], target["reference_sha256"]);
+    assert_eq!(target["stamped"]["pe-timestamp"], 0x3f3a_5c1e);
+
+    world.edit(
+        "reprobit.toml",
+        &format!("{project}stamp = {{ pe-timestamp = 0x3f3a5c1f }}\n"),
+    );
+    assert_eq!(world.rbit(&["verify"]).code, 1);
+}
+
 #[test]
 fn steps_imported_from_a_compilation_database_build_and_verify() {
     let world = World::new();

@@ -437,6 +437,30 @@ host = ["windows-x86_64"]
 url = "https://github.com/encounter/gc-wii-binutils/releases/download/2.42-2/windows-x86_64.zip"
 sha256 = "bd95bd57607efb45c437e97b77ec199073e242869027eb72196b0720611bb1c1"
 
+[tools."mips-binutils"]
+kind = "tool"
+summary = "GNU binutils for MIPS (PS1, PS2, N64): as, ld, objcopy, objdump for splat's INCLUDE_ASM builds"
+version = "0.10"
+homepage = "https://github.com/decompals/binutils-mips-ps2-decompals"
+license = "GPL-3.0-or-later"
+tags = ["ps1", "psx", "ps2", "n64", "mips", "binutils"]
+bin = { as = "mips-ps2-decompals-as", ld = "mips-ps2-decompals-ld", objcopy = "mips-ps2-decompals-objcopy", objdump = "mips-ps2-decompals-objdump", ar = "mips-ps2-decompals-ar", nm = "mips-ps2-decompals-nm" }
+
+[[tools."mips-binutils".get]]
+host = ["macos-aarch64"]
+url = "https://github.com/decompals/binutils-mips-ps2-decompals/releases/download/v0.10/binutils-mips-ps2-decompals-macos-arm64.tar.gz"
+sha256 = "948cc736e01b2c135168caabfb616f6ed8efe89f1dad1ed8ef1ca74acb1b742c"
+
+[[tools."mips-binutils".get]]
+host = ["linux-x86_64"]
+url = "https://github.com/decompals/binutils-mips-ps2-decompals/releases/download/v0.10/binutils-mips-ps2-decompals-linux-x86-64.tar.gz"
+sha256 = "9fe31ea3ee1a37536f9f0e2e12c668e7c3cb99e59f5154bd2f1fc4762473094c"
+
+[[tools."mips-binutils".get]]
+host = ["windows-x86_64"]
+url = "https://github.com/decompals/binutils-mips-ps2-decompals/releases/download/v0.10/binutils-mips-ps2-decompals-windows-x86-64.zip"
+sha256 = "2bb5904ee174e04f1600cc70ffdb3dc36b0efa4d1892ea446be588ba8dc6198c"
+
 [tools."ninja"]
 kind = "tool"
 summary = "Small, fast build system most decompilation projects generate"

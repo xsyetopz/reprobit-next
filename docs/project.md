@@ -69,6 +69,22 @@ clears only values a linker fills from the clock or a random source, never code 
 | `pe-checksum` | The PE optional header checksum, which covers the time stamps |
 | `build-id` | The link's identity: the PE CodeView `RSDS` GUID and age or `NB10` signature and age, the ELF GNU build-id, and each Mach-O `LC_UUID` with the code signature that hashes it |
 
+`stamp` writes declared values into the built artifact after the last step, so the file
+itself matches rather than only comparing equal after `normalize`. Use it for a link time the
+original recorded:
+
+```toml
+stamp = { pe-timestamp = 0x3f3a5c1e }
+```
+
+| Name | Writes |
+| --- | --- |
+| `pe-timestamp` | The PE file header time stamp |
+| `pe-checksum` | The PE optional header checksum |
+
+Each value is declared in `reprobit.toml` and listed in the trust report; nothing is read from
+the reference while building.
+
 ## Preludes
 
 A step may carry a `prelude`: declarations force-included before the source that produce no

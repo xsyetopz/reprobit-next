@@ -10,7 +10,7 @@ byte, and shows why the result can be trusted.**
 `--json`, names the next step when something is missing, and exits 0, 1 (a negative result,
 such as a mismatch), or 2 (an error).
 
-- **One catalog, nothing vendored.** [`catalog/tools.toml`](catalog/tools.toml) names 31
+- **One catalog, nothing vendored.** [`catalog/tools.toml`](catalog/tools.toml) names 32
   tools, Flash's ffdec and Ruffle among them, and the 230 compilers decomp.me serves for 17 platforms: PS1, PS2, PSP, N64,
   GameCube and Wii, DS, 3DS, Wii U, GBA, Saturn, Dreamcast, Xbox 360, Switch, Win32, and
   more. Each download is checked against a digest, installed per user, and removable by

@@ -119,6 +119,12 @@ pub(crate) struct Target {
     /// a linker fills from the clock or a random source.
     #[serde(default)]
     pub(crate) normalize: Vec<String>,
+    /// Values written into the built artifact after the last step, such as
+    /// `{ pe-timestamp = 0x3f3a5c1e }` for the original's link time. Unlike
+    /// `normalize`, the artifact itself then matches. Each value is declared
+    /// here for review; nothing is read from the reference.
+    #[serde(default)]
+    pub(crate) stamp: BTreeMap<String, u32>,
 }
 
 /// One producer invocation.

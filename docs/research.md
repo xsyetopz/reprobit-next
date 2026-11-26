@@ -26,7 +26,12 @@ every platform and drops what only steered that one compiler:
 | PE timestamp and NB10 debug identity normalization | `normalize`: `pe-timestamps`, `pe-checksum`, and `build-id`, which also covers PE `RSDS`, ELF build-ids, and Mach-O UUIDs |
 | Content-pinned toolchains and cold verification | `reprobit.lock` and `rbit verify` |
 | Versioned JSON records (`project-v3`, `report-v2`, and others) | `reprobit.toml` and two unversioned JSON Schemas generated from the types |
-| COFF projection, donors, mosaics, and composition recipes with proof certificates | Not ported. They rewrote MSVC 4.2 objects after compilation, so a match depended on ReproBit's rewriter as well as the compiler. A match now comes from the compiler, a prelude, or a pinned catalog patch, and any further processing is an ordinary step that runs a catalog tool such as objdiff or dtk. |
+| `metadata_normalization`: a declared value written into a field | `stamp`, such as `pe-timestamp`, written into the artifact after the build |
+| `link_ordering` | The order of a link step's arguments |
+| `generated_supplier`: a generated compilation unit | An ordinary step that writes it |
+| Donors (`equal_body`, `structural`, `cross_tu`) and `binary_surgery`: bodies composed from other compiles | Steps that compile or assemble the unit separately and link it: per-function sources with their own flags, or splat's `INCLUDE_ASM` with `mips-binutils` or `gc-wii-binutils` from the catalog. Each input is declared, so the trust report shows it. |
+| `semantic_rewrite` and the MSVC 4.2 COFF projection and mosaic recipes | Not ported. They rewrote MSVC 4.2 objects instruction by instruction after compilation, so a match depended on ReproBit's rewriter as well as the compiler, and no other toolchain used them. A match now comes from the compiler, a prelude, a separately built unit, or a pinned catalog patch. |
+| `legacy.oracle_install`: bytes copied from the reference | Not ported. It was always quarantined, and a step may not read a reference at all. |
 | PDB 2.00 SmallMSF canonicalization for debug companions | Not ported; only MSVC 4.x PDBs needed it, and objdiff compares functions without a PDB. |
 
 ## Compilers

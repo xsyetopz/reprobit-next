@@ -15,7 +15,7 @@ use crate::catalog::Catalog;
 use crate::project::{LOCK, Loaded, Prelude, Step};
 use crate::runner::{Mode, Stage};
 use crate::tools::{self, Installed};
-use crate::{digest, ui};
+use crate::{binary, digest, ui};
 
 /// What one step read and wrote.
 #[derive(Debug, Clone, Serialize)]
@@ -111,6 +111,18 @@ pub(crate) fn run(loaded: &Loaded, stage_root: &Path, cache: bool) -> Result<Bui
         receipts.push(run_step(
             loaded, &catalog, &compiler, &stage, step, &headers, cache,
         )?);
+    }
+    for target in project
+        .targets
+        .iter()
+        .filter(|target| !target.stamp.is_empty())
+    {
+        let path = stage.build().join(&target.artifact);
+        let mut bytes =
+            fs::read(&path).with_context(|| format!("target {} was not built", target.id))?;
+        binary::stamp(&mut bytes, &target.stamp)
+            .with_context(|| format!("cannot stamp target {}", target.id))?;
+        fs::write(&path, bytes)?;
     }
     stage.finish();
     Ok(Built {
