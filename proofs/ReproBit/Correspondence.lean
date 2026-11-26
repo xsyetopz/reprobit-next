@@ -1,14 +1,16 @@
 /-!
-Theorem 3: renaming registers instruction by instruction preserves behaviour
-when a register correspondence holds at every reachable point.
+Theorem 3: rewriting instructions point by point preserves behaviour when
+a correspondence between the two programs' locations holds at every
+reachable point.
 
 Both programs share their points (instruction indices) and control flow
 graph. At each point, the old instruction reads `reads` and writes
-`writes`; its renamed form reads and writes `rho` of them. `σ p` lists pairs
-`(n, o)`: on reaching `p`, the new program's register `n` holds the value of
-the old program's register `o`. The checker in
-`crates/reprobit-msvc-4x/src/rename.rs` computes `σ` as a fixpoint over the
-graph and checks `Checked`.
+`writes`; its new form reads and writes `rho` of them, and agrees with the
+old one on the values of the writes in `kept`. `σ p` lists pairs `(n, o)`:
+on reaching `p`, the new program's location `n` holds the value of the old
+program's location `o`. The checker in
+`crates/reprobit-msvc-4x/src/correspond.rs` computes `σ` as a fixpoint over
+the graph and checks `Checked`.
 -/
 
 namespace ReproBit
@@ -17,6 +19,7 @@ namespace ReproBit
 structure Renamed (R V : Type) where
   reads : List R
   writes : List R
+  kept : List R
   rho : R → R
   execOld : (R → V) → (R → V)
   execNew : (R → V) → (R → V)
@@ -26,11 +29,12 @@ structure Renamed (R V : Type) where
 variable {R V : Type}
 
 /-- The renamed instruction computes what the old one did, on renamed
-registers, and goes to the same successor; each leaves what it does not
-write alone. -/
+registers for each write in `kept`, and goes to the same successor; each
+leaves what it does not write alone. A write outside `kept` may differ
+between the two, as when a mirrored compare sets the carry the other way. -/
 structure Renamed.Sound (i : Renamed R V) : Prop where
   agree : ∀ s s', (∀ r ∈ i.reads, s' (i.rho r) = s r) →
-    (∀ w ∈ i.writes, i.execNew s' (i.rho w) = i.execOld s w) ∧ i.nextNew s' = i.nextOld s
+    (∀ w ∈ i.kept, i.execNew s' (i.rho w) = i.execOld s w) ∧ i.nextNew s' = i.nextOld s
   frameOld : ∀ s x, x ∉ i.writes → i.execOld s x = s x
   frameNew : ∀ s' x, (∀ w ∈ i.writes, x ≠ i.rho w) → i.execNew s' x = s' x
 
@@ -38,9 +42,9 @@ structure Renamed.Sound (i : Renamed R V) : Prop where
 def Holds (σ : List (R × R)) (s s' : R → V) : Prop := ∀ p ∈ σ, s' p.1 = s p.2
 
 /-- A pair that holds after `i`: kept from `σ` because `i` overwrites
-neither side, or written by `i`. -/
+neither side, or written by `i` with a value both programs agree on. -/
 def Post (i : Renamed R V) (σ : List (R × R)) (n o : R) : Prop :=
-  ((n, o) ∈ σ ∧ ∀ w ∈ i.writes, n ≠ i.rho w ∧ o ≠ w) ∨ (∃ w ∈ i.writes, n = i.rho w ∧ o = w)
+  ((n, o) ∈ σ ∧ ∀ w ∈ i.writes, n ≠ i.rho w ∧ o ≠ w) ∨ (∃ w ∈ i.kept, n = i.rho w ∧ o = w)
 
 theorem post_holds {i : Renamed R V} (h : i.Sound) {σ : List (R × R)} {s s' : R → V}
     (hs : Holds σ s s') (hr : ∀ r ∈ i.reads, (i.rho r, r) ∈ σ) {n o : R}
