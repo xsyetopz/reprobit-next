@@ -121,9 +121,21 @@ the registers their operands name.
 
 The map is checked before anything is written. Each renamed register is named by an operand
 of its instruction, and neither side is `esp`. No two registers an instruction uses become
-one. The renamed instruction encodes at the same length, keeps its relocated fields, and reads
-and writes exactly the renamed registers of the original. The renamed function must then pass
-the correspondence check below.
+one. The renamed instruction keeps its relocated fields and reads and writes exactly the
+renamed registers of the original. The renamed function must then pass the correspondence
+check below.
+
+A renamed memory base can change an instruction's length: `[ebx]` becomes `[ebp+0]`, one byte
+longer, because `ebp` as a base needs a displacement. Each instruction then moves to its new
+place. Relative branches inside the function are encoded again for their targets' new places,
+in the same short or near form, and a branch that leaves the function without a relocation
+must keep its place. Relocated fields move with the displacement or immediate that holds them.
+`int3` or `nop` padding after the function's last jump or return absorbs the change when
+nothing enters it, so the rest of the object keeps its layout. Otherwise the object is laid
+out again: symbols, relocations, line numbers, section sizes and file pointers, relocation
+addends into the section, `CodeView` 4 procedure and block extents, and FPO sizes move with
+the code. `propose` finds such a rename when the two functions differ only in their registers
+and their padding.
 
 ### `exchange`
 

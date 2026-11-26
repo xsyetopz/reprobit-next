@@ -2,6 +2,12 @@
 
 use std::path::Path;
 
+use object::write::{Mangling, Object, Relocation, StandardSection, Symbol, SymbolSection};
+use object::{
+    Architecture, BinaryFormat, Endianness, Object as _, ObjectSection as _, ObjectSymbol as _,
+    RelocationFlags, SymbolFlags, SymbolKind, SymbolScope,
+};
+
 use super::{addon, entered, function, object};
 
 /// `mov edx, [esp+4]`
@@ -23,6 +29,18 @@ const RETURN_ECX: [u8; 2] = [0x8b, 0xc1];
 /// `mov edx, 0`
 const CLEAR_EDX: [u8; 5] = [0xba, 0, 0, 0, 0];
 const RET: [u8; 1] = [0xc3];
+/// `int3`, the padding after a function.
+const INT3: [u8; 1] = [0xcc];
+/// `mov ebx, [esp+4]`
+const LOAD_EBX: [u8; 4] = [0x8b, 0x5c, 0x24, 0x04];
+/// `mov ebp, [esp+4]`
+const LOAD_EBP: [u8; 4] = [0x8b, 0x6c, 0x24, 0x04];
+/// `mov eax, [ebx]`
+const READ_EBX: [u8; 2] = [0x8b, 0x03];
+/// `mov eax, [ebp+0]`, one byte longer, as `ebp` needs a displacement.
+const READ_EBP: [u8; 3] = [0x8b, 0x45, 0x00];
+/// `xor ebx, ebx` / `xor ebp, ebp`, so the caller sees both registers alike.
+const CLEAR_BOTH: [u8; 4] = [0x33, 0xdb, 0x33, 0xed];
 
 fn rename(path: &Path, map: &str) -> std::process::Output {
     addon(&[
@@ -209,4 +227,181 @@ fn propose_finds_the_registers_that_trade_places() {
     args.extend(proposals[0].iter().map(String::as_str));
     assert!(addon(&args).status.success());
     assert_eq!(function(&built), function(&reference));
+}
+
+/// `mov ebx, [esp+4]` / `xor eax, eax` / `test ebx, ebx` / `je` over
+/// `mov eax, [ebx]` / `xor ebx, ebx` / `xor ebp, ebp` / `ret` / `int3`, or with `ebp` and no padding.
+fn guarded(ebp: bool) -> Vec<Vec<u8>> {
+    if ebp {
+        vec![
+            LOAD_EBP.to_vec(),
+            vec![0x33, 0xc0],
+            vec![0x85, 0xed],
+            vec![0x74, 0x03],
+            READ_EBP.to_vec(),
+            CLEAR_BOTH.to_vec(),
+            RET.to_vec(),
+        ]
+    } else {
+        vec![
+            LOAD_EBX.to_vec(),
+            vec![0x33, 0xc0],
+            vec![0x85, 0xdb],
+            vec![0x74, 0x02],
+            READ_EBX.to_vec(),
+            CLEAR_BOTH.to_vec(),
+            RET.to_vec(),
+            INT3.to_vec(),
+        ]
+    }
+}
+
+#[test]
+fn a_longer_base_takes_the_padding_and_its_branch_follows() {
+    let dir = tempfile::tempdir().unwrap();
+    let original = guarded(false);
+    let parts: Vec<&[u8]> = original.iter().map(Vec::as_slice).collect();
+    let path = object(dir.path(), "f.obj", &parts, &[], None);
+    let output = rename(&path, "0:ebx:ebp,2:ebx:ebp,4:ebx:ebp");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(function(&path).0, guarded(true).concat());
+}
+
+/// An object whose `.text` holds `_f`, `code`, then `_h`, `mov eax, [_g]`
+/// and `ret`, with a `DIR32` relocation to `_g` in `_h`, FPO data that
+/// holds `_f`'s size, and a `.lf` symbol whose value 2 counts `_f`'s lines,
+/// as MSVC writes it.
+fn followed(dir: &Path, name: &str, code: &[&[u8]]) -> std::path::PathBuf {
+    let mut file = Object::new(BinaryFormat::Coff, Architecture::I386, Endianness::Little);
+    file.set_mangling(Mangling::None);
+    let text = file.section_id(StandardSection::Text);
+    let code = code.concat();
+    file.append_section_data(text, &[&code[..], &[0xa1, 0, 0, 0, 0, 0xc3]].concat(), 16);
+    let symbol = |name: &[u8], value, section| Symbol {
+        name: name.to_vec(),
+        value,
+        size: 0,
+        kind: SymbolKind::Text,
+        scope: SymbolScope::Linkage,
+        weak: false,
+        section,
+        flags: SymbolFlags::None,
+    };
+    let function = file.add_symbol(symbol(b"_f", 0, SymbolSection::Section(text)));
+    let after = u64::try_from(code.len()).unwrap();
+    file.add_symbol(symbol(b"_h", after, SymbolSection::Section(text)));
+    file.add_symbol(symbol(b".lf", 2, SymbolSection::Section(text)));
+    let global = file.add_symbol(symbol(b"_g", 0, SymbolSection::Undefined));
+    file.add_relocation(
+        text,
+        Relocation {
+            offset: after + 1,
+            symbol: global,
+            addend: 0,
+            flags: RelocationFlags::Coff {
+                typ: object::pe::IMAGE_REL_I386_DIR32,
+            },
+        },
+    )
+    .unwrap();
+    let fpo = file.add_section(Vec::new(), b".debug$F".to_vec(), object::SectionKind::Debug);
+    let mut entry = vec![0; 16];
+    entry[4] = u8::try_from(code.len()).unwrap();
+    file.append_section_data(fpo, &entry, 4);
+    file.add_relocation(
+        fpo,
+        Relocation {
+            offset: 0,
+            symbol: function,
+            addend: 0,
+            flags: RelocationFlags::Coff {
+                typ: object::pe::IMAGE_REL_I386_DIR32NB,
+            },
+        },
+    )
+    .unwrap();
+    let path = dir.join(name);
+    let mut bytes = file.write().unwrap();
+    let table = usize::try_from(u32::from_le_bytes(bytes[8..12].try_into().unwrap())).unwrap();
+    let count = usize::try_from(u32::from_le_bytes(bytes[12..16].try_into().unwrap())).unwrap();
+    let lines = (0..count)
+        .map(|index| table + index * 18)
+        .find(|&at| bytes[at..at + 8] == *b".lf\0\0\0\0\0")
+        .unwrap();
+    // `C_FCN`, the storage class of `.bf`, `.lf`, and `.ef`.
+    bytes[lines + 16] = 101;
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+#[test]
+fn a_longer_function_without_padding_moves_what_follows_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = followed(
+        dir.path(),
+        "f.obj",
+        &[&LOAD_EBX, &READ_EBX, &CLEAR_BOTH, &RET],
+    );
+    let output = rename(&path, "0:ebx:ebp,1:ebx:ebp");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let bytes = std::fs::read(&path).unwrap();
+    let file = object::File::parse(&*bytes).unwrap();
+    let follower = file.symbol_by_name("_h").unwrap();
+    let text = file
+        .section_by_index(follower.section_index().unwrap())
+        .unwrap();
+    assert_eq!(follower.address(), 12);
+    assert_eq!(
+        text.data().unwrap(),
+        [
+            &LOAD_EBP[..],
+            &READ_EBP,
+            &CLEAR_BOTH,
+            &RET,
+            &[0xa1, 0, 0, 0, 0, 0xc3]
+        ]
+        .concat()
+    );
+    let offsets: Vec<u64> = text.relocations().map(|(offset, _)| offset).collect();
+    assert_eq!(offsets, [13]);
+    let fpo = file.section_by_name(".debug$F").unwrap();
+    assert_eq!(fpo.data().unwrap()[4], 12, "FPO data holds the new size");
+}
+
+#[test]
+fn propose_finds_a_rename_that_changes_the_length() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ours, theirs) = (guarded(false), guarded(true));
+    let built = object(
+        dir.path(),
+        "built.obj",
+        &ours.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+        &[],
+        None,
+    );
+    let reference = object(
+        dir.path(),
+        "reference.obj",
+        &theirs.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+        &[],
+        None,
+    );
+    let output = addon(&[
+        "propose",
+        built.to_str().unwrap(),
+        reference.to_str().unwrap(),
+        "_f",
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let proposals: Vec<Vec<String>> = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        proposals,
+        vec![vec![
+            "rename",
+            "--symbol",
+            "_f",
+            "--map",
+            "0:ebx:ebp,2:ebx:ebp,4:ebx:ebp"
+        ]]
+    );
 }

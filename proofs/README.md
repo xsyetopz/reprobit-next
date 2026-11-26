@@ -137,6 +137,12 @@ Theorem 2:
   as `cmp a, b` does and sets the same `ZF`; and `mov r, [B]; cmp [A], r`
   sets the same `ZF` as `mov r, [A]; cmp [B], r`, since equality is
   symmetric. The other flags, and `r` in the last, are clobbers.
+- When a renamed instruction changes length, `layout` moves the
+  instructions but keeps the program the theorem reads: each relative
+  branch is encoded again to the same instruction it targeted, a branch
+  leaving the function without a relocation keeps its place, relocated
+  fields keep their bytes, and dropped padding lies after the last jump or
+  return where no branch, record, or other section enters.
 
 Memory and x87 state are never renamed, and every form here writes them
 with the same values. Calls are modelled by the calling convention, as in
