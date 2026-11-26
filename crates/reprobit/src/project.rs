@@ -114,8 +114,9 @@ pub(crate) struct Target {
     /// original is caught before any comparison.
     #[serde(default)]
     pub(crate) sha256: Option<String>,
-    /// Metadata normalizations applied to both sides before comparing, such
-    /// as `pe-timestamps`. Each changes only fields that record build time.
+    /// Metadata normalizations applied to both sides before comparing:
+    /// `pe-timestamps`, `pe-checksum`, or `build-id`. Each clears only fields
+    /// a linker fills from the clock or a random source.
     #[serde(default)]
     pub(crate) normalize: Vec<String>,
 }

@@ -13,6 +13,22 @@ each source contributed, so a later change can check the reasoning against the o
 | xsyetopz/OpenTLOS | A GameCube project on the dtk-template stack: `dtk`, `objdiff-cli`, `wibo` for Metrowerks compilers, and `ninja`. All four are in the catalog. |
 | xsyetopz/OpenSAB | A clean-room Haxe and OpenFL rewrite of a Flash game, with the SWF as a behaviour reference only. Its pipeline is a catalog pattern for Flash: deobfuscate AVM1 bytecode first, because obfuscated control flow defeats decompilers; export scripts, sounds, and shapes with JPEXS ffdec (`ffdec-cli.jar -export script`, `-dumpSWF`); render reference frames in Ruffle and the converted art in resvg and compare them pixel by pixel; and keep converted art in Git LFS. ffdec and Ruffle are in the catalog. Its lesson for verification: when two non-reference renderers disagree, such as OpenFL and ffdec on a glow filter, neither settles the question; only the original runtime does. |
 
+## From the Python version
+
+ReproBit 0.2 was a Python package built around MSVC 4.2. The Rust version keeps what serves
+every platform and drops what only steered that one compiler:
+
+| Python feature | Rust |
+| --- | --- |
+| Declaration discovery and grind | `rbit grind`, with the same prelude families |
+| Repair after a shared-header edit | `rbit repair`: a saved prelude goes only when every target still matches |
+| CMake import through the CMake file API | `rbit import compile_commands.json`, which also reads Ninja, Meson, and Bear output |
+| PE timestamp and NB10 debug identity normalization | `normalize`: `pe-timestamps`, `pe-checksum`, and `build-id`, which also covers PE `RSDS`, ELF build-ids, and Mach-O UUIDs |
+| Content-pinned toolchains and cold verification | `reprobit.lock` and `rbit verify` |
+| Versioned JSON records (`project-v3`, `report-v2`, and others) | `reprobit.toml` and two unversioned JSON Schemas generated from the types |
+| COFF projection, donors, mosaics, and composition recipes with proof certificates | Not ported. They rewrote MSVC 4.2 objects after compilation, so a match depended on ReproBit's rewriter as well as the compiler. A match now comes from the compiler, a prelude, or a pinned catalog patch, and any further processing is an ordinary step that runs a catalog tool such as objdiff or dtk. |
+| PDB 2.00 SmallMSF canonicalization for debug companions | Not ported; only MSVC 4.x PDBs needed it, and objdiff compares functions without a PDB. |
+
 ## Compilers
 
 - **decomp.me** publishes every compiler it serves as an OCI image at

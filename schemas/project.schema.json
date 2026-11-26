@@ -268,7 +268,7 @@
           "type": "string"
         },
         "normalize": {
-          "description": "Metadata normalizations applied to both sides before comparing, such\nas `pe-timestamps`. Each changes only fields that record build time.",
+          "description": "Metadata normalizations applied to both sides before comparing:\n`pe-timestamps`, `pe-checksum`, or `build-id`. Each clears only fields\na linker fills from the clock or a random source.",
           "type": "array",
           "default": [],
           "items": {

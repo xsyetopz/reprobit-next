@@ -1,12 +1,12 @@
 //! Reading binaries: build-time metadata normalization, locating where two
 //! images differ, and pulling one function out of an object file.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use object::{Object, ObjectSection, ObjectSymbol};
 use serde::Serialize;
 
 /// The normalizations a target may name.
-pub(crate) const NORMALIZATIONS: &[&str] = &["pe-timestamps"];
+pub(crate) const NORMALIZATIONS: &[&str] = &["pe-timestamps", "pe-checksum", "build-id"];
 
 /// Applies the named normalizations to `bytes` and returns how many fields changed.
 pub(crate) fn normalize(bytes: &mut [u8], names: &[String]) -> Result<usize> {
@@ -14,6 +14,18 @@ pub(crate) fn normalize(bytes: &mut [u8], names: &[String]) -> Result<usize> {
     for name in names {
         changed += match name.as_str() {
             "pe-timestamps" => pe_timestamps(bytes)?,
+            "pe-checksum" => {
+                let (pe, _) = pe_sections(bytes).context("pe-checksum needs a PE image")?;
+                zero(bytes, &[(pe + 24 + 64, 4)])
+            }
+            "build-id" => {
+                let fields = build_id(bytes);
+                ensure!(
+                    !fields.is_empty(),
+                    "build-id found no PE debug signature, ELF build-id, or Mach-O UUID"
+                );
+                zero(bytes, &fields)
+            }
             other => bail!(
                 "unknown normalization {other}; known: {}",
                 NORMALIZATIONS.join(", ")
@@ -63,45 +75,41 @@ fn pe_sections(bytes: &[u8]) -> Option<(usize, Vec<Section>)> {
     Some((pe, sections))
 }
 
-/// Zeroes the fields where a linker or resource compiler records when it ran:
-/// the file header, export directory, debug directory entries, and resource
-/// directory tables. Code and data are untouched.
-fn pe_timestamps(bytes: &mut [u8]) -> Result<usize> {
-    let (pe, sections) = pe_sections(bytes).context("pe-timestamps needs a PE image")?;
-    let to_offset = |rva: usize| {
-        sections
-            .iter()
-            .find(|(_, start, size, _, raw)| rva >= *start && rva < start + (*size).max(*raw))
-            .map(|(_, start, _, offset, _)| rva - start + offset)
-    };
+/// The file offset and size of PE data directory `index`, when present.
+fn pe_directory(bytes: &[u8], index: usize) -> Option<(usize, usize)> {
+    let (pe, sections) = pe_sections(bytes)?;
     let optional = pe + 24;
     let directories = match u16_at(bytes, optional) {
         Some(0x20b) => optional + 112,
         _ => optional + 96,
     };
-    let directory = |index: usize| {
-        Some((
-            u32_at(bytes, directories + index * 8)?,
-            u32_at(bytes, directories + index * 8 + 4)?,
-        ))
-    };
-    let mut fields = vec![pe + 8];
-    if let Some((rva, _)) = directory(0).filter(|(rva, size)| *rva != 0 && *size != 0)
-        && let Some(at) = to_offset(rva)
-    {
-        fields.push(at + 4);
+    let rva = u32_at(bytes, directories + index * 8)?;
+    let size = u32_at(bytes, directories + index * 8 + 4)?;
+    let offset = sections
+        .iter()
+        .find(|(_, start, virtual_size, _, raw)| {
+            rva != 0 && rva >= *start && rva < start + (*virtual_size).max(*raw)
+        })
+        .map(|(_, start, _, offset, _)| rva - start + offset)?;
+    Some((offset, size))
+}
+
+/// Zeroes the fields where a linker or resource compiler records when it ran:
+/// the file header, export directory, debug directory entries, and resource
+/// directory tables. Code and data are untouched.
+fn pe_timestamps(bytes: &mut [u8]) -> Result<usize> {
+    let (pe, _) = pe_sections(bytes).context("pe-timestamps needs a PE image")?;
+    let mut fields = vec![(pe + 8, 4)];
+    if let Some((at, _)) = pe_directory(bytes, 0).filter(|(_, size)| *size != 0) {
+        fields.push((at + 4, 4));
     }
-    if let Some((rva, size)) = directory(6).filter(|(rva, _)| *rva != 0)
-        && let Some(at) = to_offset(rva)
-    {
-        fields.extend((0..size / 28).map(|entry| at + entry * 28 + 4));
+    if let Some((at, size)) = pe_directory(bytes, 6) {
+        fields.extend((0..size / 28).map(|entry| (at + entry * 28 + 4, 4)));
     }
-    if let Some((rva, _)) = directory(2).filter(|(rva, _)| *rva != 0)
-        && let Some(base) = to_offset(rva)
-    {
+    if let Some((base, _)) = pe_directory(bytes, 2) {
         let mut pending = vec![base];
         while let Some(table) = pending.pop() {
-            fields.push(table + 4);
+            fields.push((table + 4, 4));
             let entries =
                 u16_at(bytes, table + 12).unwrap_or(0) + u16_at(bytes, table + 14).unwrap_or(0);
             for entry in 0..entries {
@@ -112,16 +120,94 @@ fn pe_timestamps(bytes: &mut [u8]) -> Result<usize> {
             }
         }
     }
+    Ok(zero(bytes, &fields))
+}
+
+/// Zeroes each `(offset, length)` field and returns how many were not zero.
+fn zero(bytes: &mut [u8], fields: &[(usize, usize)]) -> usize {
     let mut changed = 0;
-    for at in fields {
-        if let Some(field) = bytes.get_mut(at..at + 4)
+    for (at, length) in fields {
+        if let Some(field) = bytes.get_mut(*at..at + length)
             && field.iter().any(|byte| *byte != 0)
         {
             field.fill(0);
             changed += 1;
         }
     }
-    Ok(changed)
+    changed
+}
+
+/// The fields that identify one link rather than its content: the PE
+/// `CodeView` signature (`RSDS` GUID and age, or `NB10` signature and age),
+/// the ELF GNU build-id, and each Mach-O `LC_UUID` with the code signature
+/// that hashes it, universal binaries included. Linkers fill them with
+/// random or time-based values.
+fn build_id(bytes: &[u8]) -> Vec<(usize, usize)> {
+    if pe_sections(bytes).is_some() {
+        let Some((table, size)) = pe_directory(bytes, 6) else {
+            return Vec::new();
+        };
+        return (0..size / 28)
+            .filter_map(|entry| {
+                let at = table + entry * 28;
+                (u32_at(bytes, at + 12)? == 2).then_some(())?;
+                let data = u32_at(bytes, at + 24)?;
+                match bytes.get(data..data + 4)? {
+                    b"RSDS" => Some((data + 4, 20)),
+                    b"NB10" => Some((data + 8, 8)),
+                    _ => None,
+                }
+            })
+            .collect();
+    }
+    if let Some(fields) = mach_uuids(bytes, 0) {
+        return fields;
+    }
+    // The build-id is a slice of `bytes`, so its address gives its offset.
+    object::File::parse(bytes)
+        .ok()
+        .and_then(|file| file.build_id().ok().flatten())
+        .map_or_default(|id| vec![(id.as_ptr().addr() - bytes.as_ptr().addr(), id.len())])
+}
+
+/// Each `LC_UUID` payload and code signature in a thin or universal Mach-O
+/// at `base`, of either byte order, since `PowerPC` images are big-endian.
+fn mach_uuids(bytes: &[u8], base: usize) -> Option<Vec<(usize, usize)>> {
+    let word = |at: usize, big: bool| {
+        let raw: [u8; 4] = bytes.get(at..at + 4)?.try_into().ok()?;
+        usize::try_from(if big {
+            u32::from_be_bytes(raw)
+        } else {
+            u32::from_le_bytes(raw)
+        })
+        .ok()
+    };
+    match word(base, true)? {
+        0xcafe_babe => {
+            let mut fields = Vec::new();
+            for arch in 0..word(base + 4, true)?.min(64) {
+                fields.extend(mach_uuids(bytes, word(base + 8 + arch * 20 + 8, true)?)?);
+            }
+            Some(fields)
+        }
+        magic @ (0xfeed_face | 0xfeed_facf | 0xcefa_edfe | 0xcffa_edfe) => {
+            let big = matches!(magic, 0xfeed_face | 0xfeed_facf);
+            let wide = matches!(magic, 0xfeed_facf | 0xcffa_edfe);
+            let mut at = base + if wide { 32 } else { 28 };
+            let mut fields = Vec::new();
+            for _ in 0..word(base + 16, big)? {
+                match word(at, big)? {
+                    0x1b => fields.push((at + 8, 16)),
+                    // The code signature hashes the pages that hold the UUID.
+                    0x1d => fields.push((base + word(at + 8, big)?, word(at + 12, big)?)),
+                    _ => {}
+                }
+                at += word(at + 4, big)?.max(8);
+            }
+            Some(fields)
+        }
+        _ => None,
+    }
 }
 
 /// One run of differing bytes.

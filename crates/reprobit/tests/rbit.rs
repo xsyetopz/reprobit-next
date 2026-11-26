@@ -302,6 +302,38 @@ fn repair_drops_a_prelude_only_when_the_build_still_matches() {
     succeeds(&world.rbit(&["verify"]));
 }
 
+/// A big-endian `PowerPC` Mach-O executable whose only load command is `LC_UUID`.
+fn powerpc_image(uuid: u8) -> Vec<u8> {
+    let mut image = Vec::new();
+    for word in [0xfeed_face_u32, 18, 0, 2, 1, 24, 0, 0x1b, 24] {
+        image.extend(word.to_be_bytes());
+    }
+    image.extend([uuid; 16]);
+    image
+}
+
+#[test]
+fn build_id_normalization_ignores_only_the_link_identity() {
+    let world = World::new();
+    fs::write(world.project().join("main.c"), powerpc_image(1)).expect("built image");
+    fs::write(world.project().join("reference/app.bin"), powerpc_image(2)).expect("reference");
+    succeeds(&world.rbit(&["setup"]));
+    assert_eq!(world.rbit(&["verify"]).code, 1);
+
+    let project = fs::read_to_string(world.project().join("reprobit.toml")).expect("project");
+    world.edit(
+        "reprobit.toml",
+        &format!("{project}normalize = [\"build-id\"]\n"),
+    );
+    let normalized = world.rbit(&["verify"]);
+    assert_eq!(succeeds(&normalized)["targets"][0]["normalized_fields"], 2);
+
+    let mut changed_code = powerpc_image(1);
+    changed_code[4] = 7;
+    fs::write(world.project().join("main.c"), changed_code).expect("built image");
+    assert_eq!(world.rbit(&["verify"]).code, 1);
+}
+
 #[test]
 fn steps_imported_from_a_compilation_database_build_and_verify() {
     let world = World::new();

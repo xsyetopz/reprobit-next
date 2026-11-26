@@ -60,11 +60,14 @@ reprobit.toml`, then add the link step, which compilation databases do not recor
 
 `reference` is the original binary. It belongs to the project's owner and is never committed
 or redistributed; ignore it in `.gitignore`. `sha256` catches a wrong original before any
-comparison. `normalize` names metadata fields to clear on both sides before comparing:
+comparison. `normalize` names metadata fields to clear on both sides before comparing. Each
+clears only values a linker fills from the clock or a random source, never code or data:
 
 | Name | Clears |
 | --- | --- |
 | `pe-timestamps` | The PE file header, export directory, debug directory, and resource directory time stamps |
+| `pe-checksum` | The PE optional header checksum, which covers the time stamps |
+| `build-id` | The link's identity: the PE CodeView `RSDS` GUID and age or `NB10` signature and age, the ELF GNU build-id, and each Mach-O `LC_UUID` with the code signature that hashes it |
 
 ## Preludes
 
