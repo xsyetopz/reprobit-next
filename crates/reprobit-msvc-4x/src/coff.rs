@@ -81,6 +81,9 @@ pub(crate) struct Function {
     pub(crate) relocations: Vec<Relocation>,
     /// Offsets within the function that something outside its code names.
     pub(crate) barriers: BTreeSet<usize>,
+    /// Offsets within the function that code or data outside it may enter,
+    /// named by relocations from sections that are not debug records.
+    pub(crate) entries: BTreeSet<usize>,
 }
 
 impl Function {
@@ -241,6 +244,7 @@ impl<'a> Coff<'a> {
             bytes,
             relocations,
             barriers: BTreeSet::new(),
+            entries: BTreeSet::new(),
         };
         let inside = |offset: usize| (start < offset && offset < end).then(|| offset - start);
         // Line numbers: an address, or a symbol index where the line is 0.
@@ -288,7 +292,9 @@ impl<'a> Coff<'a> {
                 name if name.starts_with(".debug") => bail!(
                     "{name} describes the function, and only CodeView 4 and FPO data are kept in step"
                 ),
-                _ => {}
+                _ => function
+                    .entries
+                    .extend(targets.iter().filter_map(|&(_, target)| inside(target))),
             }
         }
         Ok(function)

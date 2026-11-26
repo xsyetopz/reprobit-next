@@ -1,7 +1,7 @@
 [package]
 name = "reprobit-msvc-4x"
 version = "0.1.0"
-description = "A ReproBit add-on for MSVC 4.x objects: reorders a function's instructions to a declared, dependence-preserving order."
+description = "A ReproBit add-on for MSVC 4.x objects: reorders, renames, and exchanges instructions in ways proved to keep their behaviour."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

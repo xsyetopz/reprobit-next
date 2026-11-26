@@ -1,6 +1,7 @@
 #![cfg(test)]
 //! Behaviour of the add-on's rewrites and proposals, through its binary.
 
+mod exchange;
 mod rename;
 mod schedule;
 
@@ -21,6 +22,19 @@ pub(crate) fn object(
     code: &[&[u8]],
     loads: &[u64],
     prologue: Option<u8>,
+) -> PathBuf {
+    entered(dir, name, code, loads, prologue, None)
+}
+
+/// `object`, with a data word that holds `_f`'s address plus `entry`, as a
+/// table of places to jump to would.
+pub(crate) fn entered(
+    dir: &Path,
+    name: &str,
+    code: &[&[u8]],
+    loads: &[u64],
+    prologue: Option<u8>,
+    entry: Option<u32>,
 ) -> PathBuf {
     let mut file = Object::new(BinaryFormat::Coff, Architecture::I386, Endianness::Little);
     file.set_mangling(Mangling::None);
@@ -52,6 +66,22 @@ pub(crate) fn object(
             Relocation {
                 offset,
                 symbol: global,
+                addend: 0,
+                flags: RelocationFlags::Coff {
+                    typ: object::pe::IMAGE_REL_I386_DIR32,
+                },
+            },
+        )
+        .unwrap();
+    }
+    if let Some(entry) = entry {
+        let data = file.section_id(StandardSection::Data);
+        file.append_section_data(data, &entry.to_le_bytes(), 4);
+        file.add_relocation(
+            data,
+            Relocation {
+                offset: 0,
+                symbol: function,
                 addend: 0,
                 flags: RelocationFlags::Coff {
                     typ: object::pe::IMAGE_REL_I386_DIR32,
