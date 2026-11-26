@@ -1,0 +1,14 @@
+{
+  "name": "reprobit",
+  "description": "ReproBit: byte-identical rebuilds for game decompilation projects.",
+  "owner": {
+    "name": "xsyetopz"
+  },
+  "plugins": [
+    {
+      "name": "reprobit",
+      "source": "./",
+      "description": "Rebuild game and legacy binaries byte for byte with their original compilers."
+    }
+  ]
+}

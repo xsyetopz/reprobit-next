@@ -1,102 +1,40 @@
-# Automatically find one missing compiler adjustment
+# Grind: find the compiler state that closes a one-byte gap
 
-This small project starts one byte away from its reference executable. The C++
-is already correct; Microsoft Visual C++ 4.2 simply chooses a different register
-encoding when it compiles the function.
-
-The `grind` command runs a small automatic search over four declaration-only
-compiler states. Exactly one
-of them reproduces the reference function. Accepting that result should save two
-small reviewed records:
-
-- a cheap declaration-shape donor; and
-- an equal-body function intervention that uses only that freshly compiled donor.
-
-The pair costs 26 relative points. The project already contains one independent
-timestamp-normalization rule so repeated linker runs are deterministic.
+This project builds one C++ function with Microsoft Visual C++ 4.2. The source is already
+right, but the rebuilt executable differs from its original by one byte: the compiler chose a
+different register encoding because the original was built after other declarations had
+changed its internal numbering. `rbit grind` searches declaration-only preludes until the
+function's bytes match.
 
 ## Run it
 
-From the ReproBit repository root, prepare the compiler once and run the
-example:
+The compiler is a Win32 program, so this needs Wine, Docker or OrbStack, or wibo
+(`rbit tool install wibo`).
 
-```console
+```sh
 cd examples/grind
-rbit setup .
-python prepare_reference.py
-rbit discover grind .
-rbit discover grind . --accept-exact
-rbit verify .
+rbit setup .               # install MSVC 4.2, check reprobit.lock
+sh prepare-reference.sh    # build the "original" into reference/
+rbit verify .              # fails: 1 byte differs in .text
+rbit grind . --step compile.transform --symbol _transform \
+  --reference-object reference/reference.obj --accept
+rbit verify .              # passes
 ```
 
-`rbit setup` remembers the authenticated compiler location, so the other
-commands need no machine-specific paths. If MSVC 4.2 is already set up on this
-machine, skip that first line.
+`prepare-reference.sh` stands in for the original release: it compiles the same source with a
+`shape` prelude, so the reference is generated rather than committed. `rbit status` checks it
+against the pinned digest in `reprobit.toml`.
 
-The first grind is a read-only, project-wide preview. It looks at committed
-compiler steps and the available objects under `reference/`. This sample has
-one of each, so no mapping or plan editing is needed. In a larger project,
-name a reference object after its source filename without the extension, use an
-exact translation-unit ID, or pair it explicitly with
-`--reference-object TU=PATH`.
+`grind` tries the current state first, then candidates from the smallest prelude up, and
+stops at the first match: `forward count=1`, after two compiles. `--accept` writes it into
+the step:
 
-Review the report, then run the approval command to repeat the proof and save
-only matching donor and function records. The search is deliberately bounded to
-low-cost candidates; it aims for useful progress, not an exhaustive automatic
-solution. The following `verify` is a separate build from scratch: it must not
-reuse a grind artifact or the developer cache as certification evidence. Open
-`.reprobit-state/reports/grind/project/report.html` for the campaign summary and
-links to each per-function decision and winning build-from-scratch verification
-report. The bounded plan behind every decision is kept beside the report, and
-the page shows the exact copyable command for approval or final verification.
-
-For one deliberately selected function, the expert flow remains available
-through `rbit discover init` followed by
-`rbit discover grind . --expert-plan reprobit/discovery.json`.
-
-To repeat the example from its original one-byte mismatch, reset only the two
-files that approval changes, then remove the generated reports:
-
-```console
-git restore -- reprobit/interventions/tu.transform.json reprobit/proofs/tu.transform.proof.json
-rbit clean . --reports
+```toml
+prelude = { family = "forward", count = 1 }
 ```
 
-This keeps the prepared compiler, reusable build cache, and generated reference
-binary, so the next grind can start quickly.
+The prelude declares one class and emits no code or data, so the match comes from the
+compiler, not from bytes of the original. `rbit verify` then rebuilds from scratch and writes
+`.reprobit/reports/report.html`.
 
-<details>
-<summary>Advanced: pinned binary provenance</summary>
-
-### What is deliberately unsolved
-
-Before the grind, the clean `_transform` body is 137 bytes with SHA-256
-`059b98332d6e22d42878a7921fdc7f294f0388d571fdde80a731be79b05f832b`.
-The reference body is also 137 bytes, but byte 65 differs and its SHA-256 is
-`0592ba1107856e319c261ed45129ab9b518486acbde960ada58b2ace9435ccfb`.
-After timestamp normalization, that becomes one differing byte in the PE file at
-offset 577. This equal-size, one-byte case intentionally exercises the smallest
-built-in donor path rather than resize, mosaic, binary surgery, or reference-byte
-copying.
-
-### Reference provenance
-
-`prepare_reference.py` compiles this checked-in source with the campaign's
-`classes=1, functions=10` declaration state, using the authenticated MSVC 4.2
-toolchain pinned by `reprobit/toolchain.lock.json`. It links a minimal PE with no
-libraries and normalizes only candidate-owned timestamp fields to zero. It then
-checks the known reference function and final image digests before publishing:
-
-- `reference/reference.obj`, used only as sealed discovery input; and
-- `reference/grind.exe`, used only by the final literal verifier.
-
-Those generated binaries are intentionally not committed or redistributed. The
-normalized reference PE is 1,536 bytes with SHA-256
-`9c78bd9cfe3c8ded8a9a587165237d2a394719b48be34021a3cb09aff8220aab`.
-The compiler comes from
-[`archaic-msvc/msvc420`](https://github.com/archaic-msvc/msvc420) with the two
-runtime DLLs pinned from
-[`archaic-msvc/msvc500`](https://github.com/archaic-msvc/msvc500), as recorded in
-the lock file.
-
-</details>
+To start over, delete the `prelude` line and `.reprobit/`.

@@ -1,0 +1,39 @@
+[package]
+name = "reprobit"
+version = "0.3.0"
+description = "Rebuild old software byte for byte with its original compiler, and show why the result can be trusted."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "rbit"
+path = "src/main.rs"
+
+[features]
+default = ["mcp"]
+# The stdio MCP server (`rbit mcp`); the CLI and skill work without it.
+mcp = []
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.105"
+clap = { version = "4.6.10", features = ["derive"] }
+flate2 = "1.1.11"
+hex = "0.4.3"
+lzma-rs = "0.3.0"
+object = "0.41.0"
+schemars = "1.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.2"
+tar = "0.4.46"
+toml = "1.2.3"
+toml_edit = "0.25.21"
+zip = { version = "9.8.2", default-features = false, features = ["deflate-flate2"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

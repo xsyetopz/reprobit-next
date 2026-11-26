@@ -1,158 +1,76 @@
-<p align="center">
-  <img src="docs/assets/reprobit-mark.svg" width="168" alt="ReproBit: a dot-matrix R assembled from individual bits">
-</p>
+# ReproBit
 
-<h1 align="center">ReproBit</h1>
+![ReproBit: a dot-matrix R assembled from individual bits](docs/assets/reprobit-mark.svg)
 
-**Rebuild old software exactly—and show why the result can be trusted.**
+**An umbrella for game decompilation, recompilation, and reconstruction projects: one CLI
+that fetches the original compilers and the community's tools, rebuilds a binary byte for
+byte, and shows why the result can be trusted.**
 
-ReproBit helps decompilation projects reproduce an original executable byte for byte with its
-original compiler. It controls the small, often invisible details that make an old toolchain emit
-different bytes, then records how every output was made.
+`rbit` is built for AI agents first and people second. Every command answers in JSON with
+`--json`, names the next step when something is missing, and exits 0, 1 (a negative result,
+such as a mismatch), or 2 (an error).
 
-The result is more than a matching checksum. ReproBit checks three separate claims:
-
-1. the rebuilt file is literally identical to the reference file;
-2. every special adjustment used to reach that match preserved the program's logic; and
-3. the rebuilt program came from the declared source and toolchain, not bytes copied from the
-   original executable.
-
-ReproBit is pre-release software. It recognizes profiles for Microsoft Visual C++ 4.2 and the
-5.0 releases. Current end-to-end evidence with the real compiler and native Windows CI covers
-4.2; the 5.0 profiles are modeled, but do not yet carry equivalent end-to-end proof. The shared
-build, verification, reporting, and incremental pieces are designed to support more compiler
-families through reviewed library releases.
+- **One catalog, nothing vendored.** [`catalog/tools.toml`](catalog/tools.toml) names 31
+  tools, Flash's ffdec and Ruffle among them, and the 230 compilers decomp.me serves for 17 platforms: PS1, PS2, PSP, N64,
+  GameCube and Wii, DS, 3DS, Wii U, GBA, Saturn, Dreamcast, Xbox 360, Switch, Win32, and
+  more. Each download is checked against a digest, installed per user, and removable by
+  `rbit`; `reprobit.lock` pins what a project used.
+- **Any host.** Apple Silicon and Intel macOS, x86-64 Linux, and Windows. Win32 compilers
+  run under Wine, wibo, or a Wine container; Linux compilers run natively or in Docker or
+  OrbStack; macOS builds run natively where they exist.
+- **Honest matches.** A step sees only its declared inputs, never the original binary.
+  `rbit verify` rebuilds from scratch and writes a report that names the compiler's content
+  digest and every input and output.
+- **Agent surfaces.** A [skill](skills/reprobit/SKILL.md), a Claude Code plugin, a Codex
+  plugin, and an optional MCP server (`rbit mcp`).
 
 ## Install
 
-You need Python 3.11 or newer and Git. CMake import and later source-list
-refreshes need your project's compatible CMake version on `PATH`. On macOS and
-Linux, install Wine and `wineserver`; native Windows does not use Wine.
-
-```console
-git clone https://github.com/isledecomp/reprobit.git
-cd reprobit
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install .
-rbit --version
+```sh
+cargo install --locked --git https://github.com/xsyetopz/reprobit-next reprobit
 ```
 
-In Windows PowerShell, replace the activation line with `.\.venv\Scripts\Activate.ps1`,
-then run the same `python -m pip install .` and `rbit --version` commands. Keep
-the environment active while using `rbit` in your own project.
+Release binaries for each host are attached to version tags. Tools install under
+`rbit tool home`: `~/Library/Application Support/ReproBit` on macOS,
+`$XDG_DATA_HOME/reprobit` on Linux, `%LOCALAPPDATA%\ReproBit` on Windows, or
+`$REPROBIT_HOME`. `rbit tool remove --all` deletes everything there.
 
-ReproBit runs with Wine on macOS and Linux and natively on Windows. It can fetch and authenticate
-the supported MSVC 4.2 files from the pinned archaic-msvc repositories, or use an existing local
-installation. Reference binaries remain project-owned and are never redistributed by ReproBit.
-
-## Quick start
-
-The [grind example](examples/grind/README.md) is a one-function project that starts one byte
-away from its reference executable. From the repository root, with the environment active:
-
-```console
-cd examples/grind
-rbit setup .
-python prepare_reference.py
-rbit discover grind .
-rbit discover grind . --accept-exact
-rbit verify .
-```
-
-`setup` downloads and authenticates the compiler the first time, remembers where it is, and
-prints the one remaining checklist item: `place the original at reference/grind.exe`.
-`prepare_reference.py` generates both the reference executable and the project-owned `.obj`
-that automatic grind needs. The first `discover grind` is a read-only preview: it compiles four
-bounded declaration candidates, finds the one exact match, and prints the approval command.
-`--accept-exact` repeats the proof and saves the matching intervention and proof records
-(`git diff` shows both files). `verify` then builds from scratch and ends with:
+In Claude Code, the plugin brings the skill and the MCP server:
 
 ```text
-Verification passed: 1/1 targets are byte-identical
-Authenticity: clean; every required claim passed
-Intervention cost: 31 relative points
-Report: .../examples/grind/.reprobit-state/reports/report.html
+/plugin install reprobit --marketplace xsyetopz/reprobit-next
 ```
 
-Open that `report.html` in a browser for the full evidence.
+## Use
 
-## Everyday commands
-
-In a project that already has its ReproBit records committed:
-
-```console
-rbit status .                                   # what, if anything, is still missing
-rbit build .                                    # incremental developer build
-rbit verify . --report-dir build/reprobit-report  # build from scratch, write the trust report
-rbit repair .                                   # after editing a file the project already tracks
+```sh
+rbit tool list ps2                     # search the catalog
+rbit tool run objdiff-cli -- --version # install on first use, then run
+rbit init --compiler decompme/n64/ido7.1
+rbit status                            # what is ready, and the next step
+rbit setup                             # install the toolchain, write reprobit.lock
+rbit build                             # incremental build
+rbit diff                              # where the build differs from the original
+rbit verify                            # cold build, byte comparison, trust report
+rbit repair                            # after an edit, drop preludes no longer needed
+rbit import compile_commands.json      # compile steps from CMake, Ninja, Meson, or Bear
 ```
 
-`status` names the next missing setup item instead of making you remember the sequence.
-`build` reuses cached steps whose inputs are unchanged. `verify` never uses that cache and is
-the only certification path. `repair` updates the saved records affected by a source edit,
-rebuilds every target from scratch, and publishes the result only when it is still exact. Pass
-`--format ndjson` to any command for machine-readable events.
-
-To bring a new CMake project under ReproBit, follow [Getting started](docs/getting-started.md).
-
-## The LEGO Island reference case
-
-ReproBit grew out of byte-identity work on the
-[LEGO Island decompilation](https://github.com/isledecomp/isle). That project rebuilds a 1997 game
-with Microsoft Visual C++ 4.2. It illustrates the gap between two important finish lines:
-
-- **Complete decompilation:** the recovered C++ behaves like the original game.
-- **Byte-identical decompilation:** the old compiler also emits the exact original executable and
-  DLL, down to every byte.
-
-A function can be logically correct while compiler bookkeeping places or describes it
-differently. Paths that were visible to the compiler in 1997 matter. So can declaration order,
-shared debug state, parallel compiler processes, and link order.
-For a visual explanation, the LEGO Island development video covers
-[compiler entropy starting at 9:03](https://youtu.be/gthm-0Av93Q?t=543s).
-The campaign exposed these issues at real-project scale; ReproBit packages the resulting controls
-and checks into a reusable library. The project's source, targets, and interventions remain in the
-decompilation repository rather than being built into ReproBit.
+[`examples/grind`](examples/grind) is a complete MSVC 4.2 project that starts one byte
+away from its original and shows `rbit grind` finding the compiler state that closes it.
 
 ## Documentation
 
-Choose the page for the job at hand. [Getting started](docs/getting-started.md)
-owns the setup sequence and stays on the happy path. The
-[command-line guide](docs/cli.md) explains command behavior, while its generated
-[option tables](docs/cli-reference.md) are the exact source for flags and defaults.
-Workflow guides cover their own end-to-end behavior, and
-[Troubleshooting](docs/troubleshooting.md) is reserved for recovering from failures.
+- [Project file](docs/project.md): `reprobit.toml` steps, targets, and preludes.
+- [Catalog](docs/catalog.md): tool entries, fetch kinds, and adding your own catalog.
+- [Runners](docs/runners.md): how Win32 and Linux compilers run on each host.
+- [Agents](docs/agents.md): the skill, plugins, and MCP server.
+- [Research notes](docs/research.md): the projects and tools this builds on.
 
-Start here:
+The schemas in [`schemas/`](schemas) describe both documents for editors; `rbit schema`
+prints the same JSON Schema.
 
-- [Getting started](docs/getting-started.md) — from an existing CMake project to a verified build
-- [Concepts](docs/concepts.md) — compiler entropy, the clean verification boundary, costs
-- [Runnable examples](examples/README.md)
-- [Command-line guide](docs/cli.md) and the generated [option tables](docs/cli-reference.md)
-- [Find possible compiler interventions](docs/discovery.md)
-- [GitHub Action](docs/action.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Glossary](docs/glossary.md)
+## License
 
-Detailed references:
-
-- [Authenticity and threat model](docs/authenticity.md)
-- [Project format](docs/project-format.md)
-- [Interventions](docs/interventions.md)
-- [Cost model](docs/costs.md)
-- [Platforms and logical paths](docs/platforms.md)
-- [Native Windows and external MSVC setup](docs/windows.md)
-- [CMake import and refresh](docs/cmake.md)
-- [Architecture](docs/architecture.md)
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the test layout and the quality gates.
-
-```console
-python -m pip install -e '.[test]'
-ruff check && ruff format --check && mypy && python -m pytest -q
-```
-
-ReproBit is licensed under `LGPL-3.0-only`.
+LGPL-3.0-only. See [NOTICE](NOTICE) for provenance. Compilers and tools keep their own
+licenses; ReproBit redistributes none of them.
