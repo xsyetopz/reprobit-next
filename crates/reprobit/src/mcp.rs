@@ -97,7 +97,7 @@ const TOOLS: &[Spec] = &[
                 Arg::Flag,
                 "array",
                 false,
-                "Families: shape, pad, forward, extern.",
+                "Families: shape, pad, forward, extern, registers.",
             ),
             (
                 "limit",

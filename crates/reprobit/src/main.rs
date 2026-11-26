@@ -14,6 +14,7 @@ mod import;
 #[cfg(feature = "mcp")]
 mod mcp;
 mod project;
+mod rewrite;
 mod runner;
 mod tools;
 mod ui;

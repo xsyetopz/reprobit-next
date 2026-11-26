@@ -247,6 +247,16 @@
         "program": {
           "description": "A command of the compiler or of a listed tool: `cl`, `objdiff-cli:objdiff-cli`,\nor a path inside the compiler such as `Bin/CL.EXE`.",
           "type": "string"
+        },
+        "registers": {
+          "description": "Registers renamed in a function of the step's object after it\ncompiles, by symbol: `{ _transform = { esi = \"edi\", edi = \"esi\" } }`.\nA rename permutes `ebx`, `esi`, and `edi` in an i386 function, which\nevery calling convention preserves, so behaviour cannot change.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
         }
       },
       "additionalProperties": false,

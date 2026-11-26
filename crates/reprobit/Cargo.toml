@@ -24,6 +24,7 @@ anyhow = "1.0.105"
 clap = { version = "4.6.10", features = ["derive"] }
 flate2 = "1.1.11"
 hex = "0.4.3"
+iced-x86 = { version = "1.22.0", default-features = false, features = ["std", "decoder", "encoder", "instr_info"] }
 lzma-rs = "0.3.0"
 object = "0.41.0"
 schemars = "1.2.3"

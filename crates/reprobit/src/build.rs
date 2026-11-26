@@ -13,6 +13,7 @@ use serde_json::json;
 
 use crate::catalog::Catalog;
 use crate::project::{LOCK, Loaded, Prelude, Step};
+use crate::rewrite::{self, Registers};
 use crate::runner::{Mode, Stage};
 use crate::tools::{self, Installed};
 use crate::{binary, digest, ui};
@@ -188,7 +189,7 @@ pub(crate) fn run_step(
     let key = digest::bytes(
         json!({
             "program": step.program, "tool": tool_tree, "args": args, "env": env,
-            "prelude": step.prelude.as_ref().map(Prelude::render),
+            "prelude": step.prelude.as_ref().map(Prelude::render), "registers": step.registers,
             "inputs": inputs, "headers": headers, "runner": stage.mode().name(), "outputs": step.outputs,
         })
         .to_string()
@@ -217,6 +218,10 @@ pub(crate) fn run_step(
             }
         }
         stage.run(&step.id, &program, inside, &args, &env)?;
+        if !step.registers.is_empty() {
+            rename(&build.join(step.object()?), &step.registers)
+                .with_context(|| format!("step {}", step.id))?;
+        }
     }
     let mut outputs = BTreeMap::new();
     for output in &step.outputs {
@@ -234,6 +239,20 @@ pub(crate) fn run_step(
         inputs,
         outputs,
     })
+}
+
+/// Renames registers in functions of the object at `path`, in place.
+fn rename(path: &Path, functions: &BTreeMap<String, Registers>) -> Result<()> {
+    let mut bytes = fs::read(path)?;
+    let allowed = rewrite::renamable(&bytes)?;
+    for (symbol, registers) in functions {
+        let (at, function) = binary::locate(&bytes, symbol)?;
+        let renamed = rewrite::rename(&function, registers, allowed)
+            .with_context(|| format!("cannot rename registers in {symbol}"))?;
+        bytes[at..at + renamed.len()].copy_from_slice(&renamed);
+    }
+    fs::write(path, bytes)?;
+    Ok(())
 }
 
 /// Finds a step's program: a compiler command, `tool:command` from another

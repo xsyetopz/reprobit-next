@@ -285,6 +285,11 @@ pub(crate) struct Function {
 /// Extracts `symbol` from a COFF, ELF, or Mach-O object. Its extent runs to
 /// the next symbol in the same section, or the section's end.
 pub(crate) fn function(object_bytes: &[u8], symbol: &str) -> Result<Function> {
+    locate(object_bytes, symbol).map(|(_, function)| function)
+}
+
+/// Like [`function`], with the file offset of the function's first byte.
+pub(crate) fn locate(object_bytes: &[u8], symbol: &str) -> Result<(usize, Function)> {
     let file = object::File::parse(object_bytes)?;
     let found = file
         .symbols()
@@ -326,5 +331,11 @@ pub(crate) fn function(object_bytes: &[u8], symbol: &str) -> Result<Function> {
         })
         .collect();
     relocations.sort();
-    Ok(Function { bytes, relocations })
+    let (file_start, _) = section
+        .file_range()
+        .context("the symbol's section has no bytes in the file")?;
+    Ok((
+        usize::try_from(file_start + start)?,
+        Function { bytes, relocations },
+    ))
 }
