@@ -1,0 +1,24 @@
+[package]
+name = "reprobit-msvc-4x"
+version = "0.1.0"
+description = "A ReproBit add-on for MSVC 4.x objects: reorders a function's instructions to a declared, dependence-preserving order."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "rbit-msvc-4x"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.105"
+iced-x86 = { version = "1.22.0", default-features = false, features = ["std", "decoder", "instr_info"] }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+object = { version = "0.41.0", features = ["write"] }
+tempfile = "3.27.0"
