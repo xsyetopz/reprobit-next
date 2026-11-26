@@ -1,0 +1,5 @@
+name = "ReproBit"
+defaultTargets = ["ReproBit"]
+
+[[lean_lib]]
+name = "ReproBit"

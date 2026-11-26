@@ -1,0 +1,30 @@
+# Project-owned: checks the Lean soundness proofs in `proofs/` with the Lean
+# that `rbit` installs from its catalog.
+name: Proofs
+
+on:
+  push:
+    branches: [main, master]
+    paths: ["proofs/**", "catalog/tools.toml", ".github/workflows/proofs.yml"]
+  pull_request:
+    paths: ["proofs/**", "catalog/tools.toml", ".github/workflows/proofs.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install --no-self-update
+      - run: cargo build --locked --bin rbit
+      - run: ../target/debug/rbit tool run lean:lake -- build
+        working-directory: proofs
