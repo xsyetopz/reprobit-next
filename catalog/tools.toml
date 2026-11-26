@@ -292,6 +292,41 @@ as = "wibo"
 
 # --- Diffing, splitting, and project tools -----------------------------------
 
+# Checks the soundness proofs in `proofs/`: `rbit tool run lean:lake -- build`.
+[tools.lean]
+kind = "tool"
+summary = "Lean 4 theorem prover and its build tool Lake"
+version = "4.36.0"
+homepage = "https://lean-lang.org"
+license = "Apache-2.0"
+tags = ["proof", "lean"]
+bin = { lean = "bin/lean", lake = "bin/lake" }
+
+[[tools.lean.get]]
+host = ["macos-aarch64"]
+url = "https://github.com/leanprover/lean4/releases/download/v4.36.0/lean-4.36.0-darwin_aarch64.zip"
+sha256 = "35ea8a8eba3d014feb16414610454322f6aad7679f8f0d9f09fb63754bb16e39"
+strip = "lean-4.36.0-darwin_aarch64"
+
+[[tools.lean.get]]
+host = ["macos-x86_64"]
+url = "https://github.com/leanprover/lean4/releases/download/v4.36.0/lean-4.36.0-darwin.zip"
+sha256 = "39d519550cc574ff8814f5a7d3da9bcc8fd8e27c37ac79ef75a23b66b18fa5e2"
+strip = "lean-4.36.0-darwin"
+
+[[tools.lean.get]]
+host = ["linux-x86_64"]
+url = "https://github.com/leanprover/lean4/releases/download/v4.36.0/lean-4.36.0-linux.zip"
+sha256 = "92a996be487b48e1c2f2985be6b150490475c94d02f5a5e26665a9dab780902a"
+strip = "lean-4.36.0-linux"
+
+[[tools.lean.get]]
+host = ["windows-x86_64"]
+url = "https://github.com/leanprover/lean4/releases/download/v4.36.0/lean-4.36.0-windows.zip"
+sha256 = "5af5f955df6cfe37082d71c56c7d47fe620faa9f59e14b917b43976c08dc676b"
+strip = "lean-4.36.0-windows"
+
+
 [tools."objdiff-cli"]
 kind = "tool"
 summary = "Function-level object diffing for decompilation projects (command line)"

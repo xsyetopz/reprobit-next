@@ -86,9 +86,10 @@ fn reorder(bytes: &mut [u8], symbol: &str, order: &[usize]) -> Result<()> {
     let function = Coff::parse(bytes)?.function(symbol)?;
     let instructions = decode(&function)?;
     schedule::check(&instructions, order)?;
+    let emitted = schedule::emit(&instructions, order)?;
     let mut code = Vec::with_capacity(function.bytes.len());
     let mut moved = Vec::new();
-    for &index in order {
+    for (&index, bytes) in order.iter().zip(emitted) {
         let instruction = &instructions[index];
         let range = instruction.start..instruction.start + instruction.bytes.len();
         for relocation in function
@@ -102,7 +103,7 @@ fn reorder(bytes: &mut [u8], symbol: &str, order: &[usize]) -> Result<()> {
                 function.start + code.len() + relocation.offset - instruction.start,
             ));
         }
-        code.extend(&instruction.bytes);
+        code.extend(bytes);
     }
     ensure!(
         code.len() == function.bytes.len(),
@@ -116,7 +117,8 @@ fn reorder(bytes: &mut [u8], symbol: &str, order: &[usize]) -> Result<()> {
 }
 
 /// The order that turns `symbol` in `built` into the one in `reference`,
-/// when both hold the same instructions with the same relocations.
+/// when both hold the same instructions with the same relocations, up to
+/// the displacements that rebasing `[esp+d]` operands changes.
 fn propose(built: &[u8], reference: &[u8], symbol: &str) -> Result<Option<Vec<usize>>> {
     let (built, reference) = (
         Coff::parse(built)?.function(symbol)?,
@@ -140,7 +142,7 @@ fn propose(built: &[u8], reference: &[u8], symbol: &str) -> Result<Option<Vec<us
                 )
             })
             .collect();
-        (instruction.bytes.clone(), relocations)
+        (instruction.shape(), instruction.slot(), relocations)
     };
     let mut used = vec![false; ours.len()];
     let mut order = Vec::with_capacity(ours.len());
@@ -155,8 +157,9 @@ fn propose(built: &[u8], reference: &[u8], symbol: &str) -> Result<Option<Vec<us
         order.push(index);
     }
     let identity = order.iter().copied().eq(0..order.len());
-    Ok(
-        (!identity && order.len() == ours.len() && schedule::check(&ours, &order).is_ok())
-            .then_some(order),
-    )
+    Ok((!identity
+        && order.len() == ours.len()
+        && schedule::check(&ours, &order).is_ok()
+        && schedule::emit(&ours, &order).is_ok())
+    .then_some(order))
 }

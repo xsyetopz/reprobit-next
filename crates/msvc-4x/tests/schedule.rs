@@ -228,3 +228,117 @@ fn propose_finds_the_order_that_rebuilds_the_reference() {
         "a matching function needs no rewrite"
     );
 }
+
+/// `push edx`
+const PUSH_EDX: [u8; 1] = [0x52];
+/// `mov eax, [esp+0x18]`
+const LOAD_ARGUMENT: [u8; 4] = [0x8b, 0x44, 0x24, 0x18];
+/// `mov eax, [esp+0x1c]`, the same slot one push deeper.
+const LOAD_ARGUMENT_PUSHED: [u8; 4] = [0x8b, 0x44, 0x24, 0x1c];
+
+#[test]
+fn a_stack_load_crosses_a_push_and_its_displacement_follows_the_slot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[&LOAD_ARGUMENT, &PUSH_EDX, &RET],
+        &[],
+        None,
+    );
+    let output = schedule(&path, "1,0,2");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        function(&path).0,
+        [&PUSH_EDX[..], &LOAD_ARGUMENT_PUSHED, &RET].concat()
+    );
+}
+
+#[test]
+fn a_stack_load_of_the_pushed_slot_keeps_its_place() {
+    let dir = tempfile::tempdir().unwrap();
+    // `mov eax, [esp]` after `push edx` reads the value just pushed.
+    let load_top: [u8; 3] = [0x8b, 0x04, 0x24];
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[&PUSH_EDX, &load_top, &RET],
+        &[],
+        None,
+    );
+    let output = schedule(&path, "1,0,2");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("depend on each other"));
+}
+
+#[test]
+fn a_rebased_displacement_that_outgrows_its_encoding_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    // `mov eax, [esp+0x7c]` needs 0x80 below a push, which a disp8 cannot hold.
+    let load_far: [u8; 4] = [0x8b, 0x44, 0x24, 0x7c];
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[&load_far, &PUSH_EDX, &RET],
+        &[],
+        None,
+    );
+    let before = std::fs::read(&path).unwrap();
+    let output = schedule(&path, "1,0,2");
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("cannot hold"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+}
+
+#[test]
+fn a_load_through_another_register_does_not_cross_a_push() {
+    let dir = tempfile::tempdir().unwrap();
+    // `mov eax, [ecx]` may point at the stack.
+    let load_pointer: [u8; 2] = [0x8b, 0x01];
+    let path = object(
+        dir.path(),
+        "f.obj",
+        &[&load_pointer, &PUSH_EDX, &RET],
+        &[],
+        None,
+    );
+    assert!(!schedule(&path, "1,0,2").status.success());
+}
+
+#[test]
+fn propose_matches_a_stack_load_by_its_slot() {
+    let dir = tempfile::tempdir().unwrap();
+    let built = object(
+        dir.path(),
+        "built.obj",
+        &[&LOAD_ARGUMENT, &PUSH_EDX, &RET],
+        &[],
+        None,
+    );
+    let reference = object(
+        dir.path(),
+        "reference.obj",
+        &[&PUSH_EDX, &LOAD_ARGUMENT_PUSHED, &RET],
+        &[],
+        None,
+    );
+    let output = addon(&[
+        "propose",
+        built.to_str().unwrap(),
+        reference.to_str().unwrap(),
+        "_f",
+    ]);
+    let proposals: Vec<Vec<String>> = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        proposals,
+        vec![vec!["schedule", "--symbol", "_f", "--order", "1,0,2"]]
+    );
+}
