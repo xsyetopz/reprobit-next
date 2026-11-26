@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context, Result, bail, ensure};
-use iced_x86::{Code, ConstantOffsets, Decoder, DecoderOptions, Encoder, FlowControl, Instruction};
+use iced_x86::{Code, Encoder, FlowControl, Instruction};
 
 use crate::coff::{Coff, Function};
 use crate::correspond;
@@ -133,12 +133,7 @@ fn padding(function: &Function, decoded: &[Instruction], starts: &[usize]) -> Op
 /// Where the field at `offset` in the instruction `old` starts lies in its
 /// new encoding `new`: the same displacement or immediate.
 fn counterpart(old: &[u8], new: &[u8], offset: usize) -> Result<usize> {
-    let offsets = |bytes: &[u8]| -> ConstantOffsets {
-        let mut decoder = Decoder::new(32, bytes, DecoderOptions::NONE);
-        let instruction = decoder.decode();
-        decoder.get_constant_offsets(&instruction)
-    };
-    let (before, after) = (offsets(old), offsets(new));
+    let (before, after) = (correspond::constants(old), correspond::constants(new));
     let pairs = [
         (before.displacement_offset(), after.displacement_offset()),
         (before.immediate_offset(), after.immediate_offset()),

@@ -14,6 +14,7 @@ catalog and checks every proof; the `Proofs` workflow runs it on each change.
 | `ReproBit/Permutation.lean` | `run_equivariant`, `callee_saved` |
 | `ReproBit/Reorder.lean` | `swap_nonconflicting`, `reorder_sound`, `reorderOk_sound` |
 | `ReproBit/Correspondence.lean` | `post_holds`, `run_agrees`, `rename_sound` |
+| `ReproBit/Simulation.lean` | `sum_perm`, `sum_flatten`, `op_swap` |
 
 ## Theorem 1: register permutation (`crates/reprobit/src/rewrite.rs`)
 
@@ -143,6 +144,16 @@ Theorem 2:
   leaving the function without a relocation keeps its place, relocated
   fields keep their bytes, and dropped padding lies after the last jump or
   return where no branch, record, or other section enters.
+- `region` rewrites a straight run that only its first instruction enters,
+  which `Point::run` makes one point. Its kept writes are the registers and
+  flags whose terms the simulator leaves equal in both runs, and memory and
+  the x87 state must end with equal terms. A term's value is a function of
+  the term and the start state, so equal terms hold equal values.
+  `Simulation.lean` proves that the simulator's normal forms keep a term's
+  value: sorting a sum's terms (`sum_perm`), flattening a sum inside a sum
+  (`sum_flatten`), and sorting the operands of an operation that commutes
+  (`op_swap`). That each instruction's term is its semantics rests on
+  `iced-x86`'s operand and register tables, as the footprints do.
 
 Memory and x87 state are never renamed, and every form here writes them
 with the same values. Calls are modelled by the calling convention, as in

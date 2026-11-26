@@ -93,6 +93,24 @@ pub(crate) fn derive(
     if ours.len() != theirs.len() {
         return None;
     }
+    let mut map = Map::new();
+    for (index, (our, their)) in ours.iter().zip(&theirs).enumerate() {
+        let renames = between(our, their)?;
+        if !renames.is_empty() {
+            map.insert(index, renames);
+        }
+    }
+    let renamed = apply(object, built, &map).ok()?;
+    let renamed = Coff::parse(&renamed).ok()?.function(symbol).ok()?.bytes;
+    (!map.is_empty() && renamed == reference).then_some(map)
+}
+
+/// The rename of `our`'s operand registers that gives `their`'s, when both
+/// are the same operation.
+pub(crate) fn between(
+    our: &Instruction,
+    their: &Instruction,
+) -> Option<BTreeMap<Register, Register>> {
     let operands = |instruction: &Instruction| -> Vec<Register> {
         (0..instruction.op_count())
             .flat_map(|operand| match instruction.op_kind(operand) {
@@ -103,24 +121,41 @@ pub(crate) fn derive(
             .map(Register::full_register32)
             .collect()
     };
-    let mut map = Map::new();
-    for (index, (our, their)) in ours.iter().zip(&theirs).enumerate() {
-        if our.mnemonic() != their.mnemonic() {
+    if our.mnemonic() != their.mnemonic() {
+        return None;
+    }
+    let mut renames = BTreeMap::new();
+    for (from, to) in operands(our).into_iter().zip(operands(their)) {
+        if from != to && *renames.entry(from).or_insert(to) != to {
             return None;
         }
-        let mut renames = BTreeMap::new();
-        for (from, to) in operands(our).into_iter().zip(operands(their)) {
-            if from != to && *renames.entry(from).or_insert(to) != to {
-                return None;
+    }
+    Some(renames)
+}
+
+/// `instruction` with the registers its operands name renamed by `rho`.
+pub(crate) fn renamed(
+    instruction: &Instruction,
+    rho: &BTreeMap<Register, Register>,
+) -> Result<Instruction> {
+    let swap = |register: Register| match rho.get(&register.full_register32()) {
+        Some(&to) if register != Register::None => counterpart(register, to),
+        _ => Ok(register),
+    };
+    let mut changed = *instruction;
+    for operand in 0..instruction.op_count() {
+        match instruction.op_kind(operand) {
+            OpKind::Register => {
+                changed.set_op_register(operand, swap(instruction.op_register(operand))?);
             }
-        }
-        if !renames.is_empty() {
-            map.insert(index, renames);
+            OpKind::Memory => {
+                changed.set_memory_base(swap(instruction.memory_base())?);
+                changed.set_memory_index(swap(instruction.memory_index())?);
+            }
+            _ => {}
         }
     }
-    let renamed = apply(object, built, &map).ok()?;
-    let renamed = Coff::parse(&renamed).ok()?.function(symbol).ok()?.bytes;
-    (!map.is_empty() && renamed == reference).then_some(map)
+    Ok(changed)
 }
 
 /// The form of `to` the same size as `used`.
@@ -203,23 +238,7 @@ fn encode(
         images.len() == used.len(),
         "two of its registers would become one"
     );
-    let swap = |register: Register| match rho.get(&register.full_register32()) {
-        Some(&to) if register != Register::None => counterpart(register, to),
-        _ => Ok(register),
-    };
-    let mut changed = *instruction;
-    for operand in 0..instruction.op_count() {
-        match instruction.op_kind(operand) {
-            OpKind::Register => {
-                changed.set_op_register(operand, swap(instruction.op_register(operand))?);
-            }
-            OpKind::Memory => {
-                changed.set_memory_base(swap(instruction.memory_base())?);
-                changed.set_memory_index(swap(instruction.memory_index())?);
-            }
-            _ => {}
-        }
-    }
+    let changed = renamed(instruction, rho)?;
     let mut encoder = Encoder::new(32);
     encoder.encode(&changed, instruction.ip())?;
     let bytes = encoder.take_buffer();
