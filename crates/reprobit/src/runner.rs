@@ -23,7 +23,7 @@ use crate::ui;
 /// The image `docker` runs Win32 compilers in, built on first use. Wine saves
 /// the registry only when wineserver exits, so the build waits for it; a
 /// prefix without one is set up again by every container, racing the compiler.
-const WINE_IMAGE: &str = "reprobit-wine:2";
+pub(crate) const WINE_IMAGE: &str = "reprobit-wine:2";
 const WINE_DOCKERFILE: &str = "FROM i386/debian:bookworm-slim\n\
 RUN apt-get update && apt-get install -y --no-install-recommends wine wine32 && rm -rf /var/lib/apt/lists/*\n\
 ENV WINEDEBUG=-all WINEPREFIX=/wine\n\

@@ -195,6 +195,8 @@ pub(crate) fn run_step(
             .iter()
             .all(|output| cached_dir.join(output).is_file());
     if cached {
+        // `rbit gc` ages an entry by this marker, so a hit keeps it.
+        fs::write(cached_dir.join(crate::space::USED), [])?;
         for output in &step.outputs {
             copy(&cached_dir.join(output), &build.join(output))?;
         }

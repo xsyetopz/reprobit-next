@@ -10,7 +10,11 @@ use serde_json::Value;
 use crate::catalog::Catalog;
 use crate::project::{Loaded, Project};
 
+mod behave;
+mod objdiff;
 mod project;
+mod score;
+mod space;
 mod tool;
 pub(crate) use tool::ToolCommand;
 
@@ -66,6 +70,10 @@ pub(crate) enum Command {
         /// Project directory.
         #[arg(default_value = ".")]
         dir: PathBuf,
+        /// An object the build must write, as objdiff passes it; the build fails when
+        /// no step writes it. Every changed step still rebuilds.
+        #[arg(long)]
+        object: Option<PathBuf>,
     },
     /// Build from scratch, compare every target with its reference, and write the trust report.
     Verify {
@@ -103,6 +111,37 @@ pub(crate) enum Command {
         #[arg(long)]
         accept: bool,
     },
+    /// Grade each function of a built object against its reference object: exact, reloc
+    /// (only relocation targets differ), different, or missing. With no objects, grade
+    /// every step that names a reference-object.
+    Score {
+        /// The object holding the original functions, then the object the build wrote.
+        #[arg(num_args = 0..=2, value_names = ["REFERENCE", "BUILT"])]
+        objects: Vec<PathBuf>,
+        /// Project directory, when no objects are given.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Functions to grade; default every function the reference defines.
+        #[arg(long = "symbol")]
+        symbols: Vec<String>,
+    },
+    /// Run each `[[check]]`: one command against a target's reference and its artifact, whose
+    /// exit code and output must agree. For recompiled targets, whose bytes differ by design.
+    Behave {
+        /// Project directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Checks to run; default all.
+        #[arg(long = "check")]
+        checks: Vec<String>,
+    },
+    /// Write objdiff.json for objdiff and `objdiff-cli report`, from each step's
+    /// reference-object.
+    Objdiff {
+        /// Project directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
     /// After a source edit, drop each saved prelude the build no longer needs.
     Repair {
         /// Project directory.
@@ -130,6 +169,31 @@ pub(crate) enum Command {
     /// Browse, install, run, and remove catalog tools.
     #[command(subcommand)]
     Tool(ToolCommand),
+    /// Show what reprobit keeps on disk and how much `rbit gc` would free.
+    Space {
+        /// Project directory; its state is included when it holds a reprobit.toml.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Step-cache entries unused for more days than this count as reclaimable.
+        #[arg(long, default_value_t = 14)]
+        keep_days: u64,
+    },
+    /// Free disk space: downloads, tool versions the catalog dropped, project scratch, and idle
+    /// step-cache entries.
+    Gc {
+        /// Project directory; its state is included when it holds a reprobit.toml.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Keep step-cache entries used within this many days.
+        #[arg(long, default_value_t = 14)]
+        keep_days: u64,
+        /// Also remove superseded runner images from docker or podman.
+        #[arg(long)]
+        images: bool,
+        /// List what would go and remove nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Print the JSON Schema for `project` (reprobit.toml) or `catalog`.
     Schema {
         /// project or catalog.
@@ -166,7 +230,7 @@ pub(crate) fn run(command: Command) -> Result<Outcome> {
         } => project::init(&dir, &compiler, name),
         Command::Setup { dir } => project::setup(&Loaded::open(&dir)?),
         Command::Status { dir } => project::status(&dir),
-        Command::Build { dir } => project::build(&Loaded::open(&dir)?),
+        Command::Build { dir, object } => project::build(&Loaded::open(&dir)?, object.as_deref()),
         Command::Verify { dir } => project::verify(&Loaded::open(&dir)?),
         Command::Diff { dir } => project::diff(&Loaded::open(&dir)?),
         Command::Grind {
@@ -188,10 +252,28 @@ pub(crate) fn run(command: Command) -> Result<Outcome> {
             };
             project::grind(&dir, &search)
         }
+        Command::Score {
+            objects,
+            dir,
+            symbols,
+        } => score::score(&score::Request {
+            objects,
+            dir,
+            symbols,
+        }),
+        Command::Behave { dir, checks } => behave::behave(&Loaded::open(&dir)?, &checks),
+        Command::Objdiff { dir } => objdiff::objdiff(&Loaded::open(&dir)?),
         Command::Repair { dir } => project::repair(&Loaded::open(&dir)?),
         Command::Import { database, dir } => project::import(&database, &dir),
         Command::Clean { dir, all } => project::clean(&Loaded::open(&dir)?, all),
         Command::Tool(command) => tool::run(command),
+        Command::Space { dir, keep_days } => space::space(&dir, keep_days),
+        Command::Gc {
+            dir,
+            keep_days,
+            images,
+            dry_run,
+        } => space::gc(&dir, keep_days, images, dry_run),
         Command::Schema { name } => {
             let schema = match name.as_str() {
                 "project" => schemars::schema_for!(Project),

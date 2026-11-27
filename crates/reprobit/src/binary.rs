@@ -280,6 +280,26 @@ pub(crate) struct Function {
     pub(crate) bytes: Vec<u8>,
     /// `(offset within the function, target symbol name)`.
     pub(crate) relocations: Vec<(u64, String)>,
+    /// `(offset within the function, length)` of each field the linker patches,
+    /// in the order of `relocations`.
+    pub(crate) relocated: Vec<(usize, usize)>,
+}
+
+/// The defined function symbols of a COFF, ELF, or Mach-O object, in
+/// symbol-table order, each name once.
+pub(crate) fn functions(object_bytes: &[u8]) -> Result<Vec<String>> {
+    let file = object::File::parse(object_bytes)?;
+    let mut names: Vec<String> = Vec::new();
+    for symbol in file.symbols() {
+        if symbol.kind() != object::SymbolKind::Text || !symbol.is_definition() {
+            continue;
+        }
+        let Ok(name) = symbol.name() else { continue };
+        if !name.is_empty() && !name.starts_with('.') && !names.iter().any(|seen| seen == name) {
+            names.push(name.to_owned());
+        }
+    }
+    Ok(names)
 }
 
 /// Extracts `symbol` from a COFF, ELF, or Mach-O object. Its extent runs to
@@ -319,7 +339,7 @@ pub(crate) fn locate(object_bytes: &[u8], symbol: &str) -> Result<(usize, Functi
         .get(usize::try_from(start)?..usize::try_from(end)?)
         .context("the symbol lies outside its section")?
         .to_vec();
-    let mut relocations: Vec<(u64, String)> = section
+    let mut relocations: Vec<(u64, String, usize)> = section
         .relocations()
         .filter(|(offset, _)| (start..end).contains(offset))
         .map(|(offset, relocation)| {
@@ -330,15 +350,33 @@ pub(crate) fn locate(object_bytes: &[u8], symbol: &str) -> Result<(usize, Functi
                     .and_then(|item| item.name().ok().map(str::to_owned)),
                 _ => None,
             };
-            (offset - start, target.unwrap_or_default())
+            // A size of 0 means the format does not say; i386 and 32-bit
+            // RISC relocations patch one 4-byte word.
+            let width = match usize::from(relocation.size()) / 8 {
+                0 => 4,
+                bytes => bytes,
+            };
+            (offset - start, target.unwrap_or_default(), width)
         })
         .collect();
     relocations.sort();
+    let relocated = relocations
+        .iter()
+        .map(|(offset, _, width)| Ok((usize::try_from(*offset)?, *width)))
+        .collect::<Result<_>>()?;
+    let relocations = relocations
+        .into_iter()
+        .map(|(offset, target, _)| (offset, target))
+        .collect();
     let (file_start, _) = section
         .file_range()
         .context("the symbol's section has no bytes in the file")?;
     Ok((
         usize::try_from(file_start + start)?,
-        Function { bytes, relocations },
+        Function {
+            bytes,
+            relocations,
+            relocated,
+        },
     ))
 }

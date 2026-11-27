@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::{Outcome, done};
 use crate::catalog::Catalog;
-use crate::project::{FILE, LOCK, Loaded, Step};
+use crate::project::{FILE, LOCK, Loaded, SCRATCH, Step};
 use crate::runner::Mode;
 use crate::{binary, build, grind as search, tools, verify as check};
 
@@ -23,8 +23,22 @@ pub(super) struct Search {
     pub(super) accept: bool,
 }
 
-pub(super) fn build(loaded: &Loaded) -> Result<Outcome> {
+pub(super) fn build(loaded: &Loaded, object: Option<&Path>) -> Result<Outcome> {
     let built = build::run(loaded, &loaded.state().join("stage"), true)?;
+    if let Some(object) = object {
+        let wanted = loaded.root.join(object);
+        let written = loaded.project.steps.iter().any(|step| {
+            step.outputs
+                .iter()
+                .any(|output| built.stage.build().join(output) == wanted)
+        });
+        anyhow::ensure!(
+            written && wanted.is_file(),
+            "no step writes {}; the stage build is {}",
+            object.display(),
+            built.stage.build().display()
+        );
+    }
     let cached = built
         .receipts
         .iter()
@@ -188,11 +202,7 @@ pub(super) fn import(database: &Path, dir: &Path) -> Result<Outcome> {
 
 pub(super) fn clean(loaded: &Loaded, all: bool) -> Result<Outcome> {
     let state = loaded.state();
-    let names: &[&str] = if all {
-        &[""]
-    } else {
-        &["stage", "verify", "grind", "reports", "logs"]
-    };
+    let names: &[&str] = if all { &[""] } else { &SCRATCH };
     for name in names {
         let path = state.join(name);
         if path.exists() {
@@ -205,7 +215,7 @@ pub(super) fn clean(loaded: &Loaded, all: bool) -> Result<Outcome> {
     ))
 }
 
-fn runner_build(loaded: &Loaded) -> String {
+pub(super) fn runner_build(loaded: &Loaded) -> String {
     // Both default spellings put the build directory at `build`.
     let build = loaded
         .project

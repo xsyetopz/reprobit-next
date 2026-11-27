@@ -13,6 +13,8 @@ use crate::rewrite::Registers;
 
 /// The project file name.
 pub(crate) const FILE: &str = "reprobit.toml";
+/// State directories that hold only what the next build or verify writes again.
+pub(crate) const SCRATCH: [&str; 6] = ["stage", "verify", "grind", "reports", "logs", "behave"];
 /// The lock that pins each tool's installed content.
 pub(crate) const LOCK: &str = "reprobit.lock";
 
@@ -44,6 +46,42 @@ pub(crate) struct Project {
     /// Producer steps in run order.
     #[serde(default, rename = "step")]
     pub(crate) steps: Vec<Step>,
+    /// Behaviour checks for recompiled targets, whose bytes differ by design.
+    #[serde(default, rename = "check", skip_serializing_if = "Vec::is_empty")]
+    pub(crate) checks: Vec<Check>,
+}
+
+/// One command run once against a target's reference and once against its
+/// artifact; `rbit behave` passes when the named results agree. It certifies
+/// behaviour on this input only, never byte identity.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(crate) struct Check {
+    /// Stable id, such as `prints-usage`.
+    pub(crate) id: String,
+    /// The target whose two binaries run.
+    pub(crate) target: String,
+    /// The host command line. `${BINARY}` expands to the binary under test,
+    /// copied under the reference's file name into an empty directory that is
+    /// also the working directory: `["wine", "${BINARY}", "/?"]`.
+    pub(crate) run: Vec<String>,
+    /// A project file fed to standard input; none by default.
+    #[serde(default)]
+    pub(crate) stdin: Option<String>,
+    /// The results that must agree: `exit`, `stdout`, `stderr`.
+    #[serde(default = "default_compare")]
+    pub(crate) compare: Vec<String>,
+    /// Seconds each run may take before it is stopped and the check fails.
+    #[serde(default = "default_timeout")]
+    pub(crate) timeout: u64,
+}
+
+fn default_compare() -> Vec<String> {
+    vec!["exit".into(), "stdout".into()]
+}
+
+const fn default_timeout() -> u64 {
+    60
 }
 
 /// The tools a project builds with.
@@ -165,6 +203,11 @@ pub(crate) struct Step {
     /// compiles and after `registers`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) rewrite: Vec<Rewrite>,
+    /// The original object this step's object should equal, relative to the
+    /// project, such as `reference/obj/main.obj`. Only `rbit score` and the
+    /// objdiff configuration `rbit objdiff` writes read it; no step sees it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reference_object: Option<String>,
 }
 
 /// One add-on rewrite: `<addon> rewrite <object> <args>…`.
@@ -267,6 +310,29 @@ impl Loaded {
                 target.id,
                 target.artifact
             );
+        }
+        for check in &project.checks {
+            ensure!(
+                project
+                    .targets
+                    .iter()
+                    .any(|target| target.id == check.target),
+                "check {} names target {}, which the project does not define",
+                check.id,
+                check.target
+            );
+            ensure!(
+                check.run.iter().any(|arg| arg.contains("${BINARY}")),
+                "check {} never passes ${{BINARY}} to its command",
+                check.id
+            );
+            for name in &check.compare {
+                ensure!(
+                    ["exit", "stdout", "stderr"].contains(&name.as_str()),
+                    "check {} compares {name}; known: exit, stdout, stderr",
+                    check.id
+                );
+            }
         }
         Ok(Self {
             root: dir.canonicalize()?,

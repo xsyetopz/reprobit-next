@@ -1,0 +1,332 @@
+[
+  {
+    "description": "What is ready in a project and the next thing to do.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "status"
+  },
+  {
+    "description": "Install the project's compiler and tools, and pin them in reprobit.lock.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "setup"
+  },
+  {
+    "description": "Incremental developer build.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "build"
+  },
+  {
+    "description": "Cold build and literal comparison of every target; writes the trust report.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "verify"
+  },
+  {
+    "description": "Where the last build differs from the references.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "diff"
+  },
+  {
+    "description": "After a source edit, drop each saved prelude the build no longer needs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "repair"
+  },
+  {
+    "description": "Grade functions exact, reloc, different, or missing: two objects, or every step with a reference-object.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "built": {
+          "description": "Object the build wrote.",
+          "type": "string"
+        },
+        "dir": {
+          "description": "Absolute project path, when no objects are given.",
+          "type": "string"
+        },
+        "reference": {
+          "description": "Object holding the original functions; give built too.",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Functions to grade; default every function.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "name": "score"
+  },
+  {
+    "description": "Run behaviour checks: each [[check]] command against a target's reference and artifact; exit and output must agree.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "description": "Check ids to run; default all.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "behave"
+  },
+  {
+    "description": "Write objdiff.json from each step's reference-object, for objdiff and objdiff-cli report.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "objdiff"
+  },
+  {
+    "description": "Search declaration-only preludes until one function matches a reference object.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "accept": {
+          "description": "Save the match into reprobit.toml.",
+          "type": "boolean"
+        },
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        },
+        "family": {
+          "description": "Families: shape, pad, forward, extern, registers, or an add-on id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "description": "Most candidates to compile.",
+          "type": "integer"
+        },
+        "reference_object": {
+          "description": "Reference object path.",
+          "type": "string"
+        },
+        "step": {
+          "description": "Compile step id.",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Function symbol.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "symbol",
+        "reference_object"
+      ],
+      "type": "object"
+    },
+    "name": "grind"
+  },
+  {
+    "description": "Search the tool and compiler catalog.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "description": "Text in id, summary, or tags.",
+          "type": "string"
+        },
+        "installed": {
+          "description": "Only installed tools.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "tool_list"
+  },
+  {
+    "description": "One catalog entry and its install state.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Tool id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "tool_info"
+  },
+  {
+    "description": "Download, check, and unpack tools.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "description": "Tool ids.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "type": "object"
+    },
+    "name": "tool_install"
+  },
+  {
+    "description": "Delete installed tools.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "description": "Tool ids.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "type": "object"
+    },
+    "name": "tool_remove"
+  },
+  {
+    "description": "Disk held by tools, downloads, runner images, and the project's state; marks what gc frees.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        },
+        "keep_days": {
+          "description": "Idle days before a step-cache entry is reclaimable.",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "space"
+  },
+  {
+    "description": "Free disk: downloads, dropped tool versions, project scratch, idle step-cache entries.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Absolute project path; default: the server's working directory.",
+          "type": "string"
+        },
+        "dry_run": {
+          "description": "List what would go; remove nothing.",
+          "type": "boolean"
+        },
+        "images": {
+          "description": "Also remove superseded runner images.",
+          "type": "boolean"
+        },
+        "keep_days": {
+          "description": "Keep step-cache entries used within this many days.",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "gc"
+  },
+  {
+    "description": "JSON Schema for reprobit.toml (project) or the catalog.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "project or catalog.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "schema"
+  }
+]

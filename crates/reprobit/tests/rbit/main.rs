@@ -13,7 +13,10 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
+#[cfg(unix)]
+mod behave;
 mod rewrite;
+mod score;
 
 /// A scratch world: tool home, test catalog, and one project directory.
 pub(crate) struct World {
@@ -519,6 +522,45 @@ fn the_published_schemas_are_the_ones_rbit_reads() {
     assert_eq!(world.rbit(&["schema", "lockfile"]).code, 2);
 }
 
+/// The tool list every agent loads into its context, pinned so a change to a
+/// description or argument shows in review with its size.
+#[test]
+fn the_mcp_tool_list_is_the_published_one() {
+    let world = World::new();
+    let mut server = world
+        .command()
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("server starts");
+    let mut input = server.stdin.take().expect("stdin");
+    writeln!(
+        input,
+        "{}",
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} })
+    )
+    .expect("request");
+    drop(input);
+    let mut line = String::new();
+    BufReader::new(server.stdout.take().expect("stdout"))
+        .read_line(&mut line)
+        .expect("reply");
+    assert!(server.wait().expect("server exits").success());
+    let tools =
+        serde_json::from_str::<Value>(&line).expect("reply is JSON")["result"]["tools"].clone();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/mcp-tools.json");
+    let rendered = serde_json::to_string_pretty(&tools).expect("tools serialize") + "\n";
+    if std::env::var_os("REPROBIT_BLESS").is_some() {
+        fs::write(&path, &rendered).expect("write mcp-tools.json");
+    }
+    assert_eq!(
+        fs::read_to_string(&path).unwrap_or_default(),
+        rendered,
+        "schemas/mcp-tools.json is stale; rerun this test with REPROBIT_BLESS=1 and review the diff"
+    );
+}
+
 #[test]
 fn the_mcp_server_answers_both_handshakes_and_runs_commands() {
     let world = World::new();
@@ -561,7 +603,13 @@ fn the_mcp_server_answers_both_handshakes_and_runs_commands() {
         .iter()
         .filter_map(|tool| tool["name"].as_str())
         .collect();
-    assert!(names.contains(&"verify") && names.contains(&"tool_install"));
+    assert!(
+        names.contains(&"verify")
+            && names.contains(&"tool_install")
+            && names.contains(&"gc")
+            && names.contains(&"score"),
+        "{names:?}"
+    );
 
     let dir = world.project().to_string_lossy().into_owned();
     let setup = ask(
@@ -583,4 +631,71 @@ fn the_mcp_server_answers_both_handshakes_and_runs_commands() {
 
     drop(input);
     assert!(server.wait().expect("server exits").success());
+}
+
+fn names(run: &Run, key: &str) -> Vec<String> {
+    succeeds(run)[key]
+        .as_array()
+        .expect("items")
+        .iter()
+        .filter_map(|item| item["name"].as_str().map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn gc_frees_what_can_be_refetched_or_rebuilt_and_keeps_the_rest() {
+    // Arrange: an install the catalog has since moved past, its successor, and a verified build.
+    let world = World::new();
+    succeeds(&world.rbit(&["tool", "install", "fake-cc"]));
+    let catalog = world.temp.path().join("catalog.toml");
+    let text = fs::read_to_string(&catalog).expect("catalog");
+    fs::write(&catalog, text.replace("version = \"1\"", "version = \"2\"")).expect("catalog");
+    succeeds(&world.rbit(&["setup"]));
+    succeeds(&world.rbit(&["verify"]));
+
+    // Act
+    let planned = names(&world.rbit(&["gc", "--dry-run"]), "removed");
+    let removed = names(&world.rbit(&["gc"]), "removed");
+
+    // Assert
+    assert_eq!(planned, removed, "a dry run lists what gc then removes");
+    assert!(removed.contains(&"fake-cc 1".to_owned()), "{removed:?}");
+    assert!(
+        removed.contains(&".reprobit/verify".to_owned()),
+        "{removed:?}"
+    );
+    assert!(
+        !removed.iter().any(|name| name == "fake-cc 2"),
+        "{removed:?}"
+    );
+    succeeds(&world.rbit(&["tool", "which", "fake-cc", "cc"]));
+    assert_eq!(succeeds(&world.rbit(&["space"]))["reclaimable"], 0);
+    assert_eq!(succeeds(&world.rbit(&["verify"]))["identical"], true);
+}
+
+#[test]
+fn gc_drops_step_cache_entries_idle_longer_than_the_kept_days() {
+    // Arrange: one cached step, used once since it was written.
+    let world = World::new();
+    succeeds(&world.rbit(&["setup"]));
+    succeeds(&world.rbit(&["build"]));
+    succeeds(&world.rbit(&["build"]));
+
+    // Act and assert: a two-week window keeps the entry; a zero-day window drops it.
+    succeeds(&world.rbit(&["gc"]));
+    assert_eq!(
+        succeeds(&world.rbit(&["build"]))["steps"][0]["cached"],
+        true
+    );
+    let removed = names(&world.rbit(&["gc", "--keep-days", "0"]), "removed");
+    assert!(
+        removed
+            .iter()
+            .any(|name| name.starts_with(".reprobit/cache/")),
+        "{removed:?}"
+    );
+    assert_eq!(
+        succeeds(&world.rbit(&["build"]))["steps"][0]["cached"],
+        false
+    );
 }

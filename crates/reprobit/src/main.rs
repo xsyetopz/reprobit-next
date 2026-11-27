@@ -3,6 +3,7 @@
 #![expect(clippy::print_stdout, reason = "a command-line tool reports on stdout")]
 
 mod addon;
+mod behave;
 mod binary;
 mod build;
 mod catalog;
@@ -17,6 +18,8 @@ mod mcp;
 mod project;
 mod rewrite;
 mod runner;
+mod score;
+mod space;
 mod tools;
 mod ui;
 mod verify;

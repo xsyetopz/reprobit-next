@@ -4,6 +4,13 @@
   "description": "A whole project file.",
   "type": "object",
   "properties": {
+    "check": {
+      "description": "Behaviour checks for recompiled targets, whose bytes differ by design.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Check"
+      }
+    },
     "headers": {
       "description": "File extensions whose contents every compile step depends on, such as\nheaders no step lists as an input.",
       "type": "array",
@@ -67,6 +74,59 @@
     "toolchain"
   ],
   "$defs": {
+    "Check": {
+      "description": "One command run once against a target's reference and once against its\nartifact; `rbit behave` passes when the named results agree. It certifies\nbehaviour on this input only, never byte identity.",
+      "type": "object",
+      "properties": {
+        "compare": {
+          "description": "The results that must agree: `exit`, `stdout`, `stderr`.",
+          "type": "array",
+          "default": [
+            "exit",
+            "stdout"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "Stable id, such as `prints-usage`.",
+          "type": "string"
+        },
+        "run": {
+          "description": "The host command line. `${BINARY}` expands to the binary under test,\ncopied under the reference's file name into an empty directory that is\nalso the working directory: `[\"wine\", \"${BINARY}\", \"/?\"]`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stdin": {
+          "description": "A project file fed to standard input; none by default.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "target": {
+          "description": "The target whose two binaries run.",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "Seconds each run may take before it is stopped and the check fails.",
+          "type": "integer",
+          "format": "uint64",
+          "default": 60,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "target",
+        "run"
+      ]
+    },
     "Paths": {
       "description": "Compiler-visible roots.",
       "type": "object",
@@ -269,6 +329,13 @@
         "program": {
           "description": "A command of the compiler or of a listed tool: `cl`, `objdiff-cli:objdiff-cli`,\nor a path inside the compiler such as `Bin/CL.EXE`.",
           "type": "string"
+        },
+        "reference-object": {
+          "description": "The original object this step's object should equal, relative to the\nproject, such as `reference/obj/main.obj`. Only `rbit score` and the\nobjdiff configuration `rbit objdiff` writes read it; no step sees it.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "registers": {
           "description": "Registers renamed in a function of the step's object after it\ncompiles, by symbol: `{ _transform = { esi = \"edi\", edi = \"esi\" } }`.\nA rename permutes `ebx`, `esi`, and `edi` in an i386 function, which\nevery calling convention preserves, so behaviour cannot change.",

@@ -42,7 +42,7 @@ const DIR: (&str, Arg, &str, bool, &str) = (
     Arg::Dir,
     "string",
     false,
-    "Project directory; default the server's working directory.",
+    "Absolute project path; default: the server's working directory.",
 );
 
 const TOOLS: &[Spec] = &[
@@ -75,6 +75,62 @@ const TOOLS: &[Spec] = &[
         "repair",
         &["repair"],
         "After a source edit, drop each saved prelude the build no longer needs.",
+        &[DIR],
+    ),
+    (
+        "score",
+        &["score"],
+        "Grade functions exact, reloc, different, or missing: two objects, or every step with a reference-object.",
+        &[
+            (
+                "reference",
+                Arg::Positional,
+                "string",
+                false,
+                "Object holding the original functions; give built too.",
+            ),
+            (
+                "built",
+                Arg::Positional,
+                "string",
+                false,
+                "Object the build wrote.",
+            ),
+            (
+                "dir",
+                Arg::Flag,
+                "string",
+                false,
+                "Absolute project path, when no objects are given.",
+            ),
+            (
+                "symbol",
+                Arg::Flag,
+                "array",
+                false,
+                "Functions to grade; default every function.",
+            ),
+        ],
+    ),
+    (
+        "behave",
+        &["behave"],
+        "Run behaviour checks: each [[check]] command against a target's reference and artifact; exit and output must agree.",
+        &[
+            DIR,
+            (
+                "check",
+                Arg::Flag,
+                "array",
+                false,
+                "Check ids to run; default all.",
+            ),
+        ],
+    ),
+    (
+        "objdiff",
+        &["objdiff"],
+        "Write objdiff.json from each step's reference-object, for objdiff and objdiff-cli report.",
         &[DIR],
     ),
     (
@@ -155,6 +211,50 @@ const TOOLS: &[Spec] = &[
         &[("ids", Arg::Positional, "array", true, "Tool ids.")],
     ),
     (
+        "space",
+        &["space"],
+        "Disk held by tools, downloads, runner images, and the project's state; marks what gc frees.",
+        &[
+            DIR,
+            (
+                "keep_days",
+                Arg::Flag,
+                "integer",
+                false,
+                "Idle days before a step-cache entry is reclaimable.",
+            ),
+        ],
+    ),
+    (
+        "gc",
+        &["gc"],
+        "Free disk: downloads, dropped tool versions, project scratch, idle step-cache entries.",
+        &[
+            DIR,
+            (
+                "keep_days",
+                Arg::Flag,
+                "integer",
+                false,
+                "Keep step-cache entries used within this many days.",
+            ),
+            (
+                "images",
+                Arg::Switch,
+                "boolean",
+                false,
+                "Also remove superseded runner images.",
+            ),
+            (
+                "dry_run",
+                Arg::Switch,
+                "boolean",
+                false,
+                "List what would go; remove nothing.",
+            ),
+        ],
+    ),
+    (
         "schema",
         &["schema"],
         "JSON Schema for reprobit.toml (project) or the catalog.",
@@ -181,11 +281,12 @@ fn tool_list() -> Value {
                 properties.insert((*arg).into(), schema);
             }
             let required: Vec<&str> = args.iter().filter(|item| item.3).map(|item| item.0).collect();
-            json!({
-                "name": name,
-                "description": description,
-                "inputSchema": { "type": "object", "properties": properties, "required": required, "additionalProperties": false },
-            })
+            let mut schema = json!({ "type": "object", "properties": properties, "additionalProperties": false });
+            // Every tool's schema is in each agent's context, so an empty list is left out.
+            if !required.is_empty() {
+                schema["required"] = json!(required);
+            }
+            json!({ "name": name, "description": description, "inputSchema": schema })
         })
         .collect();
     json!({ "resultType": "complete", "tools": tools })
