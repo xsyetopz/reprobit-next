@@ -15,6 +15,9 @@ such as a mismatch), or 2 (an error).
   GameCube and Wii, DS, 3DS, Wii U, GBA, Saturn, Dreamcast, Xbox 360, Switch, Win32, and
   more. Each download is checked against a digest, installed per user, and removable by
   `rbit`; `reprobit.lock` pins what a project used.
+  Compilers that are not free to redistribute, such as the original Xbox's XDK, join through
+  a team catalog in [`REPROBIT_CATALOGS`](docs/catalog.md#your-own-catalog) and run under
+  the same Win32 runners.
 - **Any host.** Apple Silicon and Intel macOS, x86-64 Linux, and Windows. Win32 compilers
   run under Wine, wibo, or a Wine container; Linux compilers run natively or in Docker or
   OrbStack; macOS builds run natively where they exist.
