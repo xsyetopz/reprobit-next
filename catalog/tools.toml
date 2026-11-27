@@ -366,6 +366,38 @@ url = "https://github.com/encounter/objdiff/releases/download/v3.8.3/objdiff-cli
 sha256 = "dd12dfb5e9e94a7f6c949a37e1815963cf2cffe4c87b4999b7ebc8c15b398a1f"
 as = "objdiff-cli.exe"
 
+[tools."coddog"]
+kind = "tool"
+summary = "Finds similar, duplicate, and partly shared functions across decompilation projects (reads decomp.yaml)"
+version = "0.6.3"
+homepage = "https://github.com/ethteck/coddog"
+license = "MIT OR Apache-2.0"
+tags = ["similarity", "mips", "ppc", "n64", "ps2", "gc"]
+bin = { coddog = "coddog" }
+
+[[tools."coddog".get]]
+host = ["macos-aarch64"]
+url = "https://github.com/ethteck/coddog/releases/download/0.6.3/coddog-cli-aarch64-apple-darwin.tar.xz"
+sha256 = "b040cf68cd673795ae95336dbadb045255b7d4d100f98cba32360ce1a64a0d0b"
+strip = "coddog-cli-aarch64-apple-darwin"
+
+[[tools."coddog".get]]
+host = ["macos-x86_64"]
+url = "https://github.com/ethteck/coddog/releases/download/0.6.3/coddog-cli-x86_64-apple-darwin.tar.xz"
+sha256 = "40d8f12c67a852e5716c1c2c1181673fc81bcd505e656111775c1d3b38094ed3"
+strip = "coddog-cli-x86_64-apple-darwin"
+
+[[tools."coddog".get]]
+host = ["linux-x86_64"]
+url = "https://github.com/ethteck/coddog/releases/download/0.6.3/coddog-cli-x86_64-unknown-linux-gnu.tar.xz"
+sha256 = "c8e1dd6228d4363378598b71c57095fc8d5b02c3d0cffb1c71b051a257e75bc7"
+strip = "coddog-cli-x86_64-unknown-linux-gnu"
+
+[[tools."coddog".get]]
+host = ["windows-x86_64"]
+url = "https://github.com/ethteck/coddog/releases/download/0.6.3/coddog-cli-x86_64-pc-windows-msvc.zip"
+sha256 = "ce49cda2f01acbfcb1fea165ef3cbe4db06d7b5ea3738676069149a74d8e9ea3"
+
 [tools."objdiff"]
 kind = "tool"
 summary = "Function-level object diffing for decompilation projects (desktop app)"
@@ -552,13 +584,14 @@ get = [{ pypi = "spimdisasm==1.42.4" }]
 
 [tools."m2c"]
 summary = "Machine code to C decompiler for MIPS and PowerPC"
-version = "0.4.7"
+version = "c632946b8cfb"
 homepage = "https://github.com/matt-kempster/m2c"
 license = "GPL-3.0-only"
 tags = ["decompile", "mips", "ppc"]
 needs = ["python3"]
-bin = { m2c = "bin/m2c" }
-get = [{ pypi = "m2c==0.4.7" }]
+# PyPI's `m2c` is an unrelated project, so the decompiler comes from its repository.
+bin = { m2c = "m2c.py" }
+get = [{ git = "https://github.com/matt-kempster/m2c.git", rev = "c632946b8cfbe8fce442b522dba92dfa72f1f317" }]
 
 [tools."reccmp"]
 summary = "Compares a recompiled MSVC binary with the original, function by function, using PDBs"
@@ -606,6 +639,39 @@ bin = { ghidra = "ghidraRun", headless = "support/analyzeHeadless" }
 url = "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.2_build/ghidra_12.2_PUBLIC_20261016.zip"
 sha256 = "2c2cd776db3c1f6a097ba418922378ac3649cadd5e844a6f5f088ae628a7be67"
 strip = "ghidra_12.2_PUBLIC"
+
+[tools."ghidra-ghydra"]
+kind = "tool"
+summary = "Ghidra 12.1.2 with the GhydraMCP plugin installed; an open CodeBrowser serves its program to the ghydra CLI"
+version = "12.1.2+ghydra.3.0.0-rc.1"
+homepage = "https://github.com/starsong-consulting/GhydraMCP"
+license = "Apache-2.0"
+tags = ["decompile", "disasm", "mcp", "x86", "mips", "ppc", "arm"]
+needs = ["java"]
+bin = { ghidra = "ghidraRun", headless = "support/analyzeHeadless" }
+
+# The plugin's ghidraVersion must equal Ghidra's exactly, so this pairs the newest
+# Ghidra that GhydraMCP builds for, 12.1.2, with that build.
+[[tools."ghidra-ghydra".get]]
+url = "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip"
+sha256 = "b62e81a0390618466c019c60d8c2f796ced2509c4c1aea4a37644a77272cf99d"
+strip = "ghidra_12.1.2_PUBLIC"
+
+[[tools."ghidra-ghydra".get]]
+url = "https://github.com/starsong-consulting/GhydraMCP/releases/download/v3.0.0-rc.1/Ghydra-v3.0.0-rc.1-20260618-063536-ghidra12.1.2.zip"
+sha256 = "02cb82209e20e2fa19528f15fface3ca9cf5663e1c6931f38cba595d4b081875"
+pick = { "Ghydra" = "Ghidra/Extensions/Ghydra" }
+
+[tools."ghydra"]
+kind = "tool"
+summary = "GhydraMCP's CLI and MCP bridge: list, decompile, rename, and retype in a running Ghidra (--json)"
+version = "3.0.0-rc.1"
+homepage = "https://github.com/starsong-consulting/GhydraMCP"
+license = "Apache-2.0"
+tags = ["decompile", "mcp", "ghidra"]
+needs = ["python3", "git"]
+bin = { ghydra = "bin/ghydra", ghydramcp = "bin/ghydramcp" }
+get = [{ pypi = "ghydramcp @ git+https://github.com/starsong-consulting/GhydraMCP@e944495e2b8a9c9252c821fcef8a04cf751328e4" }]
 
 [tools."rizin"]
 kind = "tool"

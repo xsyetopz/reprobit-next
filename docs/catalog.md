@@ -32,7 +32,7 @@ Each `get` sets exactly one source. Several `get` entries unpack into one instal
 | `url` | `sha256` | A zip, a tar (plain, gzip, or xz), or one file, recognized by content; `strip` drops a leading directory. Local paths and `file://` URLs work for mirrors. |
 | `git` | `rev`, a full commit | Shallow fetch; `pick = { "from" = "to" }` keeps only some paths. |
 | `oci` | Layer digests | Anonymous registry pull, such as `ghcr.io`; `reference` is a tag or a `sha256:` manifest digest. |
-| `pypi` | pip | A private virtual environment, for Python tools such as splat and m2c. |
+| `pypi` | pip | A private virtual environment, for Python tools such as splat and spimdisasm. |
 | `npm` | npm | A private prefix, for Node tools such as webcrack. |
 
 After the fetches, `patch` applies byte patches whose original bytes must match first, and
