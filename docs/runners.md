@@ -21,7 +21,10 @@ the toolchain, and a temporary directory.
   `R:\Users\reprobit\AppData\Local\Temp` unless `[paths]` says otherwise. Wine runs in a
   private prefix under `.reprobit/wine` whose only drives are `c:` and the stage, so the
   host filesystem is out of reach. On Windows, `subst` maps the stage to the drive.
-- **Docker** mounts the stage at `/r` and the toolchain read-only below it.
+- **Docker** receives the stage at `/r` as a tar on stdin and returns the build directory
+  as a tar on stdout; only the toolchain is mounted, read-only below `/r`. VM file sharing,
+  OrbStack's included, can show a new container a stale copy of a host directory that an
+  earlier run deleted or changed, so the writable stage never crosses a bind mount.
 - **Native and wibo** pass paths relative to the build directory, such as
   `../source/main.c`, which are the same on every machine and never look like a `/x` switch
   to a DOS-style command line.
@@ -30,7 +33,7 @@ the toolchain, and a temporary directory.
 
 Docker Desktop, OrbStack, Colima, and Podman all work; `rbit` calls `docker`, or `podman`
 when there is no `docker`. Linux compilers run in `debian:bookworm-slim`, pinned by digest,
-on `linux/amd64` or `linux/386`. Win32 compilers run in a local `reprobit-wine:1` i386 image
+on `linux/amd64` or `linux/386`. Win32 compilers run in a local `reprobit-wine:2` i386 image
 that `rbit` builds once from a Dockerfile it carries. On Apple Silicon both run under
 emulation: OrbStack and Docker Desktop provide it, and the first build pulls or builds the
 image.

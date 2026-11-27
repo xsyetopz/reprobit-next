@@ -10,8 +10,9 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 
 use anyhow::{Context, Result, bail, ensure};
 
@@ -19,12 +20,14 @@ use crate::project::Paths;
 use crate::tools::{self, on_path};
 use crate::ui;
 
-/// The image `docker` runs Win32 compilers in, built on first use.
-const WINE_IMAGE: &str = "reprobit-wine:1";
+/// The image `docker` runs Win32 compilers in, built on first use. Wine saves
+/// the registry only when wineserver exits, so the build waits for it; a
+/// prefix without one is set up again by every container, racing the compiler.
+const WINE_IMAGE: &str = "reprobit-wine:2";
 const WINE_DOCKERFILE: &str = "FROM i386/debian:bookworm-slim\n\
 RUN apt-get update && apt-get install -y --no-install-recommends wine wine32 && rm -rf /var/lib/apt/lists/*\n\
 ENV WINEDEBUG=-all WINEPREFIX=/wine\n\
-RUN wineboot --init >/dev/null 2>&1; rm -f /wine/dosdevices/z:; true\n";
+RUN wineboot --init >/dev/null 2>&1 && wineserver -w && test -f /wine/system.reg && rm -f /wine/dosdevices/z:\n";
 /// The image `docker` runs Linux compilers in, x86-64 and i386 alike. Pinned
 /// by index digest so every machine runs the same loader and libc.
 const LINUX_IMAGE: &str =
@@ -185,8 +188,13 @@ impl Stage {
             fs::copy(project.join(relative), &to)
                 .with_context(|| format!("cannot stage {relative}"))?;
         }
-        if !matches!(mode, Mode::Docker { .. }) {
-            link(toolchain, &root.join(below_root(&paths.toolchain)))?;
+        let attached = root.join(below_root(&paths.toolchain));
+        if matches!(mode, Mode::Docker { .. }) {
+            // The container mounts the toolchain there; a link or mount point
+            // left by an earlier run must not join the streamed stage.
+            unlink(&attached)?;
+        } else {
+            link(toolchain, &attached)?;
         }
         let stage = Self {
             root: root.to_path_buf(),
@@ -351,10 +359,12 @@ impl Stage {
             None
         };
         fs::create_dir_all(&self.logs)?;
-        let output = command
-            .stdin(Stdio::null())
-            .output()
-            .with_context(|| format!("cannot start {program_logical}"))?;
+        let output = if matches!(mode, Mode::Docker { .. }) {
+            self.contained(command)
+        } else {
+            command.stdin(Stdio::null()).output().map_err(Into::into)
+        }
+        .with_context(|| format!("cannot start {program_logical}"))?;
         let log = format!(
             "{}{}",
             String::from_utf8_lossy(&output.stdout),
@@ -373,6 +383,37 @@ impl Stage {
         Ok(log)
     }
 
+    /// Runs a container that reads the stage as a tar on stdin, writes the
+    /// build tree back as a tar on stdout, and logs on stderr. VM file
+    /// sharing on macOS can show a container a stale view of a
+    /// host directory that changed between runs, so the writable stage never
+    /// crosses a bind mount.
+    fn contained(&self, mut command: Command) -> Result<Output> {
+        let mut stage = tar::Builder::new(Vec::new());
+        stage.append_dir_all(".", &self.root)?;
+        let stage = stage.into_inner()?;
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let mut stdin = child.stdin.take().context("container stdin")?;
+        let writer = std::thread::spawn(move || stdin.write_all(&stage));
+        let mut output = child.wait_with_output()?;
+        let written = writer
+            .join()
+            .map_err(|_| anyhow::anyhow!("the stage writer panicked"))?;
+        // A container that failed may stop reading early; its status says why.
+        if output.status.success() {
+            written?;
+        }
+        if !output.stdout.is_empty() {
+            tar::Archive::new(output.stdout.as_slice()).unpack(&self.root)?;
+        }
+        output.stdout.clear();
+        Ok(output)
+    }
+
     fn docker(
         &self,
         cli: &Path,
@@ -387,16 +428,12 @@ impl Stage {
             format!("{}:{MOUNT}/{inside}:{mode}", host.display())
         };
         command.args(["run", "--rm", "--platform", platform]);
-        command
-            .arg("-v")
-            .arg(format!("{}:{MOUNT}", self.root.display()));
+        command.arg("-i");
         command.arg("-v").arg(mount(
             &self.toolchain,
             below_root(&self.paths.toolchain),
             "ro",
         ));
-        let cwd = format!("{MOUNT}/{}", below_root(&self.paths.build));
-        command.args(["-w", &cwd]);
         for (key, value) in env {
             let key = if windows && key == "PATH" {
                 "WINEPATH"
@@ -405,16 +442,21 @@ impl Stage {
             };
             command.arg("-e").arg(format!("{key}={value}"));
         }
-        if windows {
+        // `$0` is the build tree below the mount; the program's output goes
+        // to stderr because stdout carries the build tree back.
+        let launch = if windows {
             let letter = drive(&self.paths).unwrap_or('r');
-            command.args([WINE_IMAGE, "sh", "-c"]);
-            command.arg(format!(
-                "ln -sfn {MOUNT} /wine/dosdevices/{letter}: && exec wine \"$@\""
-            ));
-            command.arg("wine");
+            command.arg(WINE_IMAGE);
+            format!("ln -sfn {MOUNT} /wine/dosdevices/{letter}: && wine")
         } else {
             command.arg(LINUX_IMAGE);
-        }
+            String::new()
+        };
+        command.args(["sh", "-c"]).arg(format!(
+            "tar -x -f - -C {MOUNT} && cd \"{MOUNT}/$0\" && {launch} \"$@\" >&2; status=$?; \
+             cd {MOUNT} && tar -c -f - \"$0\"; exit $status"
+        ));
+        command.arg(below_root(&self.paths.build));
         command.arg(program).args(args);
         command
     }
@@ -520,11 +562,17 @@ fn best_effort(command: &mut Command) {
     }
 }
 
-/// Points `at` to `target`: a symlink on Unix, a junction on Windows.
-fn link(target: &Path, at: &Path) -> Result<()> {
+/// Removes the link, file, or empty directory at `at`, if any.
+fn unlink(at: &Path) -> Result<()> {
     if at.symlink_metadata().is_ok() {
         fs::remove_file(at).or_else(|_| fs::remove_dir(at))?;
     }
+    Ok(())
+}
+
+/// Points `at` to `target`: a symlink on Unix, a junction on Windows.
+fn link(target: &Path, at: &Path) -> Result<()> {
+    unlink(at)?;
     if let Some(parent) = at.parent() {
         fs::create_dir_all(parent)?;
     }
