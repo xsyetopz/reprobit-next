@@ -28,6 +28,43 @@ The repository is also a Codex plugin: [`.codex-plugin/plugin.json`](../.codex-p
 points at the same `skills/` and `.mcp.json`, and
 [`.agents/plugins/marketplace.json`](../.agents/plugins/marketplace.json) lists it.
 
+## Subagents
+
+A subagent works in its own context and returns a summary, so `rbit`'s long JSON, logs, and
+disassembly stay out of the main conversation. Two roles cover the loop:
+
+| Agent | Model | Effort | Context | Job |
+| --- | --- | --- | --- | --- |
+| `scout` | Haiku 5.5 | high | 100,000 tokens | Read-only triage: `status`, `diff`, `verify`, `tool list`; returns which targets, sections, and functions differ |
+| `matcher` | Sonnet | medium | the model's | One function: edits its source, runs `build`, `diff`, and `grind`, and ends on `verify` |
+
+Scouts read and never write, so several can run in parallel. Give each matcher its own
+source file, because two agents editing one file conflict.
+
+### Claude Code
+
+The plugin ships both agents from [`agents/`](../agents) as `reprobit:scout` and
+`reprobit:matcher`. The scout's `autoCompactWindow: 100000` makes it compact before its
+context passes 100,000 tokens, and needs Claude Code v2.1.296 or later; Haiku 5.5 needs
+v2.1.293. In the debug log, a request from the scout carries `source=agent:custom:reprobit:scout`
+and an effective window of 80,000 tokens, which is 100,000 minus the room kept for output.
+
+### Codex
+
+Codex plugins carry skills, MCP servers, apps, and hooks, but no agents. The agents live in
+[`.codex/agents/`](../.codex/agents) as `reprobit_scout` and `reprobit_matcher`. Codex loads
+them in this repository once the project is trusted. To use them in other projects, copy them
+into `~/.codex/agents/`.
+
+An agent file sets `model` and `model_reasoning_effort`, but it inherits the parent session's
+provider, and Codex speaks only the Responses API. The Claude model ids therefore resolve only
+when the session's provider serves Claude through `/v1/responses`, such as a gateway. Codex
+ignores `model_context_window` in an agent file, because it keeps only the model, effort,
+instruction, and feature keys there. It reads a model's window from the provider's catalog
+instead, from `model_catalog_url` or `model_catalog_json`. To limit the scout to 100,000
+tokens, the catalog entry for `claude-haiku-5-5` sets `"context_window": 100000`. A catalog
+replaces Codex's built-in model list, and each entry needs `base_instructions`.
+
 ## MCP server
 
 `rbit mcp` serves the commands as MCP tools over stdio, one JSON-RPC message per line. It

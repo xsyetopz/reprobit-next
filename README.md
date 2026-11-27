@@ -25,7 +25,8 @@ such as a mismatch), or 2 (an error).
   `rbit verify` rebuilds from scratch and writes a report that names the compiler's content
   digest and every input and output.
 - **Agent surfaces.** A [skill](skills/reprobit/SKILL.md), a Claude Code plugin, a Codex
-  plugin, and an optional MCP server (`rbit mcp`).
+  plugin, [subagents](docs/agents.md#subagents) for Claude Code and Codex, and an optional
+  MCP server (`rbit mcp`).
 
 ## Install
 
@@ -38,7 +39,7 @@ Release binaries for each host are attached to version tags. Tools install under
 `$XDG_DATA_HOME/reprobit` on Linux, `%LOCALAPPDATA%\ReproBit` on Windows, or
 `$REPROBIT_HOME`. `rbit tool remove --all` deletes everything there.
 
-In Claude Code, the plugin brings the skill and the MCP server:
+In Claude Code, the plugin brings the skill, the subagents, and the MCP server:
 
 ```text
 /plugin install reprobit --marketplace xsyetopz/reprobit-next
@@ -68,7 +69,7 @@ away from its original and shows `rbit grind` finding the compiler state that cl
 - [Catalog](docs/catalog.md): tool entries, fetch kinds, and adding your own catalog.
 - [Runners](docs/runners.md): how Win32 and Linux compilers run on each host.
 - [Add-ons](docs/addons.md): community rewrites per compiler, such as `msvc-4x`, and their protocol.
-- [Agents](docs/agents.md): the skill, plugins, and MCP server.
+- [Agents](docs/agents.md): the skill, plugins, subagents, and MCP server.
 - [Research notes](docs/research.md): the projects and tools this builds on.
 
 The schemas in [`schemas/`](schemas) describe both documents for editors; `rbit schema`

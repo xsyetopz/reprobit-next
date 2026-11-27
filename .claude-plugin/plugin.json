@@ -1,7 +1,7 @@
 {
   "name": "reprobit",
   "version": "0.3.0",
-  "description": "Rebuild game and legacy binaries byte for byte with their original compilers: the rbit skill, plus an optional MCP server.",
+  "description": "Rebuild game and legacy binaries byte for byte with their original compilers: the rbit skill, scout and matcher subagents, and an optional MCP server.",
   "icon": "./assets/icon.png",
   "author": {
     "name": "xsyetopz"
