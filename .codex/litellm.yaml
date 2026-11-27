@@ -1,0 +1,13 @@
+# LiteLLM gateway that serves the subagents' Claude models to Codex over /v1/responses.
+# max_input_tokens reaches Codex through model_catalog_url as the model's context window.
+model_list:
+  - model_name: claude-sonnet-5-5
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-haiku-5-5
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      max_input_tokens: 100000

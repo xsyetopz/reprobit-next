@@ -57,13 +57,31 @@ them in this repository once the project is trusted. To use them in other projec
 into `~/.codex/agents/`.
 
 An agent file sets `model` and `model_reasoning_effort`, but it inherits the parent session's
-provider, and Codex speaks only the Responses API. The Claude model ids therefore resolve only
-when the session's provider serves Claude through `/v1/responses`, such as a gateway. Codex
-ignores `model_context_window` in an agent file, because it keeps only the model, effort,
-instruction, and feature keys there. It reads a model's window from the provider's catalog
-instead, from `model_catalog_url` or `model_catalog_json`. To limit the scout to 100,000
-tokens, the catalog entry for `claude-haiku-5-5` sets `"context_window": 100000`. A catalog
-replaces Codex's built-in model list, and each entry needs `base_instructions`.
+provider, and Codex speaks only the Responses API. Claude reaches Codex through a LiteLLM
+gateway, which serves `/v1/responses`:
+
+- [`.codex/litellm.yaml`](../.codex/litellm.yaml) routes `claude-sonnet-5-5` and
+  `claude-haiku-5-5` to Anthropic. It sets `max_input_tokens: 100000` on Haiku, which is the
+  scout's limit. Codex ignores `model_context_window` in an agent file, and keeps only the
+  model, effort, instruction, and feature keys there. It takes each model's window from the
+  provider's catalog instead.
+- [`.codex/reprobit-claude.config.toml`](../.codex/reprobit-claude.config.toml) is a Codex
+  profile. It points Codex at the gateway, reads its catalog through `model_catalog_url`, and
+  starts the parent on Sonnet at medium effort. It also turns on `multi_agent_v2`, because a
+  gateway model's catalog entry carries no `multi_agent_version`, and without the feature Codex
+  offers such a parent no `spawn_agent`.
+
+```sh
+litellm --config .codex/litellm.yaml --port 4000
+cp .codex/reprobit-claude.config.toml ~/.codex/
+codex -p reprobit-claude
+```
+
+Codex sends `LITELLM_API_KEY` as the gateway key; LiteLLM checks it against its
+`LITELLM_MASTER_KEY`. Through the gateway, `codex debug models` lists `claude-haiku-5-5` with
+`context_window` 100000 and `claude-sonnet-5-5` with 1000000. A parent on the profile spawns
+`reprobit_scout` with `model: claude-haiku-5-5` and `effort: high`. After the scout reports
+96,000 tokens used, Codex compacts its context; the parent at the same count does not.
 
 ## MCP server
 
