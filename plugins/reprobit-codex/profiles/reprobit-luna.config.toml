@@ -4,3 +4,8 @@
 # high spends less of the plan.
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
+
+# Read-only reprobit tools run without asking; every other tool asks first, and a
+# headless `codex exec` refuses it.
+[mcp_servers.reprobit]
+default_tools_approval_mode = "writes"
