@@ -215,6 +215,78 @@ fn score_with_no_objects_grades_every_unit_of_the_project() {
     assert_eq!((&one["functions"], &one["exact"]), (&1.into(), &1.into()));
 }
 
+/// A built project whose `_kept` matches and `_changed` differs, scored once so that
+/// `_kept` is recorded; then `_kept` is changed and rebuilt.
+fn regressed_world() -> World {
+    let reference = object(&[("_kept", ZERO, None), ("_changed", ONE, None)]);
+    let world = unit_world(
+        &reference,
+        &object(&[("_kept", ZERO, None), ("_changed", TWO, None)]),
+    );
+    succeeds(&world.rbit(&["setup"]));
+    succeeds(&world.rbit(&["build"]));
+    let first = world.rbit(&["score"]);
+    assert_eq!(first.json["regressed"], 0, "{}", first.json);
+    fs::write(
+        world.project().join("main.c"),
+        object(&[("_kept", ONE, None), ("_changed", TWO, None)]),
+    )
+    .expect("source");
+    succeeds(&world.rbit(&["build"]));
+    world
+}
+
+fn regressed(run: &Run) -> Vec<String> {
+    run.json["symbols"]
+        .as_array()
+        .expect("symbols")
+        .iter()
+        .filter(|item| item["regressed"] == true)
+        .filter_map(|item| item["name"].as_str().map(str::to_owned))
+        .collect()
+}
+
+/// SCORE-1: a function that matched in an earlier score and no longer does is regressed.
+#[test]
+fn score_names_a_function_that_matched_before_as_regressed() {
+    let world = regressed_world();
+    let run = world.rbit(&["score"]);
+    assert_eq!(run.code, 1, "{}", run.stderr);
+    assert_eq!(run.json["regressed"], 1, "{}", run.json);
+    assert_eq!(regressed(&run), ["_kept"]);
+}
+
+/// SCORE-2: `--regressions` passes on unfinished work and fails on a regression.
+#[test]
+fn score_regressions_fails_only_when_a_match_was_lost() {
+    let reference = object(&[("_kept", ZERO, None), ("_changed", ONE, None)]);
+    let world = unit_world(
+        &reference,
+        &object(&[("_kept", ZERO, None), ("_changed", TWO, None)]),
+    );
+    succeeds(&world.rbit(&["setup"]));
+    succeeds(&world.rbit(&["build"]));
+    assert_eq!(world.rbit(&["score"]).code, 1);
+    let unfinished = world.rbit(&["score", "--regressions"]);
+    assert_eq!(unfinished.code, 0, "{}", unfinished.json);
+
+    let world = regressed_world();
+    let lost = world.rbit(&["score", "--regressions"]);
+    assert_eq!(lost.code, 1, "{}", lost.json);
+    assert_eq!(regressed(&lost), ["_kept"]);
+}
+
+/// SCORE-3: `--forget` drops the regressed function, so the next score reports none.
+#[test]
+fn score_forget_drops_a_regressed_function_from_the_record() {
+    let world = regressed_world();
+    world.rbit(&["score", "--forget"]);
+    let after = world.rbit(&["score", "--regressions"]);
+    assert_eq!(after.code, 0, "{}", after.json);
+    assert_eq!(after.json["regressed"], 0);
+    assert_eq!(regressed(&after), Vec::<String>::new());
+}
+
 #[test]
 fn objdiff_config_points_at_each_unit_and_its_build_command_works() {
     let reference = object(&[("_f", ZERO, None)]);

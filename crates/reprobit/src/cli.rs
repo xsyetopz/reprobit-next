@@ -124,6 +124,12 @@ pub(crate) enum Command {
         /// Functions to grade; default every function the reference defines.
         #[arg(long = "symbol")]
         symbols: Vec<String>,
+        /// Fail only when a function recorded in reprobit.matched stopped matching.
+        #[arg(long)]
+        regressions: bool,
+        /// Drop graded functions that no longer match from reprobit.matched.
+        #[arg(long)]
+        forget: bool,
     },
     /// Run each `[[check]]`: one command against a target's reference and its artifact, whose
     /// exit code and output must agree. For recompiled targets, whose bytes differ by design.
@@ -256,10 +262,14 @@ pub(crate) fn run(command: Command) -> Result<Outcome> {
             objects,
             dir,
             symbols,
+            regressions,
+            forget,
         } => score::score(&score::Request {
             objects,
             dir,
             symbols,
+            regressions,
+            forget,
         }),
         Command::Behave { dir, checks } => behave::behave(&Loaded::open(&dir)?, &checks),
         Command::Objdiff { dir } => objdiff::objdiff(&Loaded::open(&dir)?),

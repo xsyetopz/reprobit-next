@@ -36,6 +36,9 @@ pub(crate) struct Scored {
     /// Share of byte positions that agree, from 0 to 100, after the fields
     /// either side relocates are cleared.
     pub(crate) matching_percent: f64,
+    /// Matched in an earlier project-wide score and no longer does.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) regressed: bool,
 }
 
 /// Every graded function and the totals.
@@ -46,6 +49,8 @@ pub(crate) struct Summary {
     pub(crate) reloc: usize,
     pub(crate) different: usize,
     pub(crate) missing: usize,
+    /// Functions marked `regressed`.
+    pub(crate) regressed: usize,
     /// `exact + reloc` as a share of `functions`, from 0 to 100.
     pub(crate) matched_percent: f64,
     pub(crate) symbols: Vec<Scored>,
@@ -76,6 +81,7 @@ pub(crate) fn score(reference: &[u8], built: &[u8], symbols: &[String]) -> Resul
                     size: Some(got.bytes.len()),
                     reference_size,
                     matching_percent,
+                    regressed: false,
                 }
             }
             Err(_) => Scored {
@@ -85,6 +91,7 @@ pub(crate) fn score(reference: &[u8], built: &[u8], symbols: &[String]) -> Resul
                 size: None,
                 reference_size,
                 matching_percent: 0.0,
+                regressed: false,
             },
         });
     }
@@ -104,6 +111,7 @@ pub(crate) fn unbuilt(reference: &[u8]) -> Result<Vec<Scored>> {
                 size: None,
                 reference_size,
                 matching_percent: 0.0,
+                regressed: false,
             })
         })
         .collect()
@@ -119,6 +127,7 @@ pub(crate) fn total(scored: Vec<Scored>) -> Summary {
         reloc,
         different: count(Grade::Different),
         missing: count(Grade::Missing),
+        regressed: scored.iter().filter(|item| item.regressed).count(),
         matched_percent: percent(exact + reloc, scored.len()),
         symbols: scored,
     }

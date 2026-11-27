@@ -17,6 +17,10 @@ pub(crate) const FILE: &str = "reprobit.toml";
 pub(crate) const SCRATCH: [&str; 6] = ["stage", "verify", "grind", "reports", "logs", "behave"];
 /// The lock that pins each tool's installed content.
 pub(crate) const LOCK: &str = "reprobit.lock";
+/// Every function a project-wide `rbit score` has seen match, one `step<TAB>symbol` per
+/// line. It sits beside the lock, outside the state directory, so `rbit clean --all` keeps it
+/// and every clone and worktree checks against the same record.
+pub(crate) const MATCHED: &str = "reprobit.matched";
 
 /// A whole project file.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

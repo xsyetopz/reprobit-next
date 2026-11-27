@@ -62,6 +62,7 @@ rbit build                             # incremental build
 rbit diff                              # where the build differs from the original
 rbit verify                            # cold build, byte comparison, trust report
 rbit score                             # per-function grades: exact, reloc, different, missing
+rbit score --regressions               # fail only when a function that matched before stopped
 rbit objdiff                           # write objdiff.json for objdiff and objdiff-cli report
 rbit behave                            # recompiled targets: same command, same output?
 rbit repair                            # after an edit, drop preludes no longer needed

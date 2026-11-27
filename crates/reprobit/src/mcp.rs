@@ -110,6 +110,20 @@ const TOOLS: &[Spec] = &[
                 false,
                 "Functions to grade; default every function.",
             ),
+            (
+                "regressions",
+                Arg::Switch,
+                "boolean",
+                false,
+                "Pass unless a function recorded in reprobit.matched stopped matching.",
+            ),
+            (
+                "forget",
+                Arg::Switch,
+                "boolean",
+                false,
+                "Drop graded functions that no longer match from reprobit.matched.",
+            ),
         ],
     ),
     (

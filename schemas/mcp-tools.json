@@ -96,9 +96,17 @@
           "description": "Absolute project path, when no objects are given.",
           "type": "string"
         },
+        "forget": {
+          "description": "Drop graded functions that no longer match from reprobit.matched.",
+          "type": "boolean"
+        },
         "reference": {
           "description": "Object holding the original functions; give built too.",
           "type": "string"
+        },
+        "regressions": {
+          "description": "Pass unless a function recorded in reprobit.matched stopped matching.",
+          "type": "boolean"
         },
         "symbol": {
           "description": "Functions to grade; default every function.",

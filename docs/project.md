@@ -64,6 +64,15 @@ the progress figure decompilation projects publish. A function graded `reloc` ca
 leave the linked binary different, so `rbit verify` stays the only certificate.
 `rbit score <reference> <built>` grades two objects outside a project.
 
+A project-wide score records each `exact` or `reloc` function in `reprobit.matched`, one
+`step<TAB>symbol` per line. A recorded function that no longer matches is marked
+`regressed`, and the summary counts them. A header edit or a neighbouring change breaks a
+match without touching its source, so the record turns that into a report. The file is
+committed: every clone and worktree checks against it, and `rbit clean --all` keeps it.
+`rbit score --regressions` passes unless a function regressed, so it can gate each commit
+while unfinished functions still differ. `rbit score --forget` drops graded functions that
+no longer match from the record, for a function that was removed or renamed on purpose.
+
 `rbit objdiff` writes `objdiff.json` with one unit per step that has a reference object, so
 [objdiff](https://github.com/encounter/objdiff) and `objdiff-cli report generate` read the
 same pairs. objdiff rebuilds a unit with `rbit build --quiet --object <path>`, which runs the
