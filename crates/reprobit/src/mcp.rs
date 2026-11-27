@@ -328,10 +328,54 @@ fn tool_list() -> Value {
             if !required.is_empty() {
                 schema["required"] = json!(required);
             }
-            json!({ "name": name, "description": description, "inputSchema": schema })
+            let mut annotations = json!({ "readOnlyHint": READ_ONLY.contains(name) });
+            if DESTRUCTIVE.contains(name) {
+                annotations["destructiveHint"] = json!(true);
+            }
+            json!({ "name": name, "description": description, "inputSchema": schema, "annotations": annotations })
         })
         .collect();
     json!({ "resultType": "complete", "tools": tools })
+}
+
+/// Tools that change nothing on disk. Codex's `writes` approval mode runs these without
+/// asking and asks before every other tool.
+const READ_ONLY: &[&str] = &[
+    "status",
+    "diff",
+    "locate",
+    "space",
+    "schema",
+    "tool_list",
+    "tool_info",
+];
+
+/// Tools that delete what the project cannot rebuild from its sources and the catalog alone:
+/// installed tools, cached steps, scratch, and preludes grind found.
+const DESTRUCTIVE: &[&str] = &["gc", "tool_remove", "repair"];
+
+/// The largest result text a reply carries. Dense JSON measured about 2.2 characters per
+/// token in Claude Code, so 22,000 characters stays inside a 10,000-token budget.
+const BUDGET: usize = 22_000;
+
+/// The error that replaces a result over [`BUDGET`].
+fn over_budget(length: usize, words: &[&str], args: &[(&str, Arg, &str, bool, &str)]) -> String {
+    let optional: Vec<String> = args
+        .iter()
+        .filter(|arg| !arg.3 && arg.0 != "dir")
+        .map(|arg| format!("`{}`", arg.0))
+        .collect();
+    let narrow = if optional.is_empty() {
+        String::new()
+    } else {
+        format!("Narrow it with {}, or run", optional.join(", "))
+    };
+    let run = if narrow.is_empty() { "Run" } else { &narrow };
+    format!(
+        "The result is {length} characters, over this server's {BUDGET}-character reply budget \
+         (about 10,000 tokens). {run} `rbit --json {}` in a shell and read its output from a file.",
+        words.join(" ")
+    )
 }
 
 fn argv(
@@ -380,16 +424,19 @@ fn call(params: &Value) -> Value {
         Ok(outcome) => (outcome.ok, outcome.json),
         Err(error) => (false, json!({ "error": format!("{error:#}") })),
     };
-    let structured = if value.is_object() {
-        value.clone()
-    } else {
-        json!({ "result": value })
-    };
+    // One copy: a `structuredContent` beside the text doubled every reply an agent reads.
+    let text = value.to_string();
+    if text.len() > BUDGET {
+        return json!({
+            "resultType": "complete",
+            "isError": true,
+            "content": [{ "type": "text", "text": over_budget(text.len(), words, args) }],
+        });
+    }
     json!({
         "resultType": "complete",
         "isError": !ok,
-        "content": [{ "type": "text", "text": value.to_string() }],
-        "structuredContent": structured,
+        "content": [{ "type": "text", "text": text }],
     })
 }
 

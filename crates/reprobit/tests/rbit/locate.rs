@@ -7,7 +7,7 @@ use super::score::{LOAD, ONE, TWO, ZERO, object};
 use super::{Run, World, succeeds};
 
 /// A GNU `ar` archive of `(name, bytes)` members.
-fn archive(members: &[(&str, Vec<u8>)]) -> Vec<u8> {
+pub(crate) fn archive(members: &[(&str, Vec<u8>)]) -> Vec<u8> {
     let mut out = b"!<arch>\n".to_vec();
     for (name, data) in members {
         let header = format!(
