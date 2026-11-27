@@ -1,0 +1,5 @@
+# Codex profile for a ReproBit lead on GPT-6.2 Sol, the everyday coding model.
+# Copy to $CODEX_HOME (~/.codex) and start with `codex --profile reprobit-sol`.
+# The matcher, writer and heavy roles name no model, so they run on Sol too.
+model = "gpt-6.2-sol"
+model_reasoning_effort = "high"

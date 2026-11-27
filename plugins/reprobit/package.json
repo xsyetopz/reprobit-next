@@ -1,0 +1,11 @@
+{
+  "name": "reprobit-skills",
+  "version": "0.4.0",
+  "description": "ReproBit skills for any model: match, decompile, coordinate and disk hygiene for byte-identical rebuilds with rbit.",
+  "license": "LGPL-3.0-only",
+  "repository": "https://github.com/xsyetopz/reprobit-next",
+  "keywords": ["pi-package", "decompilation", "matching", "reverse-engineering"],
+  "pi": {
+    "skills": ["./skills"]
+  }
+}

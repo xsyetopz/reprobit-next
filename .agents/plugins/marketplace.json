@@ -3,8 +3,14 @@
   "interface": { "displayName": "ReproBit" },
   "plugins": [
     {
+      "name": "reprobit-codex",
+      "source": { "source": "local", "path": "./plugins/reprobit-codex" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Coding"
+    },
+    {
       "name": "reprobit",
-      "source": { "source": "local", "path": "./" },
+      "source": { "source": "local", "path": "./plugins/reprobit" },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Coding"
     }

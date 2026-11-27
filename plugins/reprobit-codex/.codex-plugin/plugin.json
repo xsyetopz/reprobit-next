@@ -1,0 +1,16 @@
+{
+  "name": "reprobit-codex",
+  "version": "0.4.0",
+  "description": "ReproBit for Codex: the universal skills plus a team skill that spawns luna, sol and terra workers by role. OpenAI models only; no API key.",
+  "skills": "./skills/",
+  "mcpServers": "./mcp_config.json",
+  "interface": {
+    "displayName": "ReproBit",
+    "shortDescription": "Byte-identical rebuilds for decompilation projects",
+    "developerName": "xsyetopz",
+    "category": "Coding",
+    "websiteURL": "https://github.com/xsyetopz/reprobit-next",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/reprobit-mark.svg"
+  }
+}

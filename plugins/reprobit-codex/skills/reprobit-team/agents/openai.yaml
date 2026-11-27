@@ -1,0 +1,6 @@
+interface:
+  display_name: "ReproBit team"
+  short_description: "Spawn luna, sol and terra workers by role for matching jobs"
+  default_prompt: "Use $reprobit-team to run the next matching jobs with workers."
+policy:
+  allow_implicit_invocation: true

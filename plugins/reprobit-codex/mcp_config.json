@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "reprobit": { "command": "rbit", "args": ["mcp"] }
+  }
+}

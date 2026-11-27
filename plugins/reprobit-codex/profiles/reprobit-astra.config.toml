@@ -1,0 +1,6 @@
+# Codex profile for a ReproBit lead on GPT-6.2 Astra, the most capable and most
+# expensive model (four times Sol per token). Use it only for a session about
+# functions Sol left stalled; every role without a model runs on Astra too.
+# Copy to $CODEX_HOME (~/.codex) and start with `codex --profile reprobit-astra`.
+model = "gpt-6.2-astra"
+model_reasoning_effort = "high"

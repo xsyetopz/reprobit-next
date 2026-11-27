@@ -1,0 +1,23 @@
+{
+  "name": "reprobit",
+  "version": "0.4.0",
+  "description": "ReproBit skills and agents for any model: match, decompile, coordinate and disk hygiene for byte-identical rebuilds with rbit.",
+  "icon": "./assets/icon.png",
+  "author": { "name": "xsyetopz" },
+  "homepage": "https://github.com/xsyetopz/reprobit-next",
+  "repository": "https://github.com/xsyetopz/reprobit-next",
+  "license": "LGPL-3.0-only",
+  "keywords": ["decompilation", "matching", "reverse-engineering", "retro", "compilers"],
+  "mcpServers": "./mcp_config.json",
+  "network": {
+    "hosts": [
+      "github.com",
+      "objects.githubusercontent.com",
+      "ghcr.io",
+      "pkg-containers.githubusercontent.com",
+      "pypi.org",
+      "files.pythonhosted.org",
+      "registry.npmjs.org"
+    ]
+  }
+}

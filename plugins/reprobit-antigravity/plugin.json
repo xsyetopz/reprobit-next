@@ -1,0 +1,15 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "reprobit-antigravity",
+  "displayName": "ReproBit for Antigravity",
+  "version": "0.4.0",
+  "description": "ReproBit for Antigravity: byte-identical rebuilds with rbit, Gemini 4 team roster, routing rules and a git guard for reference files and disc images.",
+  "logo": "assets/reprobit-mark.svg",
+  "suggestedPrompts": [
+    "Set up this project with rbit and show which functions still differ",
+    "Match the closest unmatched function and verify it with rbit",
+    "Split the unmatched functions across Gemini 4 workers, one source file each"
+  ],
+  "license": "LGPL-3.0-only",
+  "keywords": ["decompilation", "matching", "reverse-engineering", "gemini-4", "antigravity"]
+}

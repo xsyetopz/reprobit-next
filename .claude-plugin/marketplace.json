@@ -6,9 +6,14 @@
   },
   "plugins": [
     {
+      "name": "reprobit-agents",
+      "source": "./plugins/reprobit-claude",
+      "description": "ReproBit for Claude Code: skills, haiku scout, sonnet matcher and writer, opus heavy agent, and a guard that keeps references out of git."
+    },
+    {
       "name": "reprobit",
-      "source": "./",
-      "description": "Rebuild game and legacy binaries byte for byte with their original compilers."
+      "source": "./plugins/reprobit",
+      "description": "ReproBit skills and model-free agents for any harness; pick models per role in reprobit.agents.toml."
     }
   ]
 }

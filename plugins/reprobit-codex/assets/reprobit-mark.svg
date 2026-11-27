@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">ReproBit dot-matrix R</title>
+  <desc id="description">A geometric letter R assembled from individual cyan and violet bit dots.</desc>
+
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="#0b1020"/>
+  <rect x="26" y="26" width="460" height="460" rx="110" fill="none" stroke="#34436f" stroke-width="4"/>
+
+  <!-- Every circle is one distinct bit; together they form the ReproBit R. -->
+  <g fill="#22d3ee">
+    <!-- Stem. -->
+    <circle cx="140" cy="82" r="21"/>
+    <circle cx="140" cy="140" r="21"/>
+    <circle cx="140" cy="198" r="21"/>
+    <circle cx="140" cy="256" r="21"/>
+    <circle cx="140" cy="314" r="21"/>
+    <circle cx="140" cy="372" r="21"/>
+    <circle cx="140" cy="430" r="21"/>
+
+    <!-- Bowl. -->
+    <circle cx="198" cy="82" r="21"/>
+    <circle cx="256" cy="82" r="21"/>
+    <circle cx="314" cy="82" r="21"/>
+    <circle cx="372" cy="140" r="21"/>
+    <circle cx="372" cy="198" r="21"/>
+    <circle cx="198" cy="256" r="21"/>
+    <circle cx="256" cy="256" r="21"/>
+    <circle cx="314" cy="256" r="21"/>
+  </g>
+
+  <!-- Violet bits turn the bowl into the R's forward leg. -->
+  <g fill="#8b5cf6">
+    <circle cx="256" cy="314" r="21"/>
+    <circle cx="314" cy="372" r="21"/>
+    <circle cx="372" cy="430" r="21"/>
+  </g>
+</svg>

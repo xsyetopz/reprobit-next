@@ -1,0 +1,24 @@
+# Role map for ReproBit workers. A harness reads no model from the universal agents, so the
+# lead passes these with each spawn. Copy to `reprobit.agents.toml` in a project, or to
+# `agents.toml` in the directory `rbit tool home` prints. Use the model ids your harness
+# lists; a role left out runs on the lead's model.
+
+# Read-only triage: the cheapest model that follows tool output reliably.
+[scout]
+model = ""
+effort = "high"
+
+# One file, 1 to 4 functions under 0x400 bytes.
+[matcher]
+model = ""
+effort = "medium"
+
+# New functions from disassembly.
+[writer]
+model = ""
+effort = "medium"
+
+# Functions over 0x400 bytes, or ones a matcher left unchanged.
+[heavy]
+model = ""
+effort = "high"

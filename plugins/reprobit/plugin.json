@@ -1,0 +1,10 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "reprobit",
+  "displayName": "ReproBit",
+  "version": "0.4.0",
+  "description": "ReproBit skills and agents for any model: match, decompile, coordinate and disk hygiene for byte-identical rebuilds with rbit.",
+  "logo": "assets/reprobit-mark.svg",
+  "license": "LGPL-3.0-only",
+  "keywords": ["decompilation", "matching", "reverse-engineering", "retro", "compilers"]
+}

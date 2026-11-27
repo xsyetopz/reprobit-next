@@ -1,0 +1,19 @@
+{
+  "name": "reprobit-pi",
+  "version": "0.4.0",
+  "description": "ReproBit for pi: an rbit tool, a guard that keeps references and disc images out of git, the ReproBit skills, and match and disk prompts.",
+  "license": "LGPL-3.0-only",
+  "repository": "https://github.com/xsyetopz/reprobit-next",
+  "type": "module",
+  "keywords": ["pi-package", "decompilation", "matching", "reverse-engineering"],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/reprobit.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/*.md"]
+  }
+}
