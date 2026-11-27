@@ -30,6 +30,7 @@ program = "cl"                 # a compiler command, or tool:command
 args = ["/nologo", "/c", '${SOURCE}\transform.cpp', '/Fo${BUILD}\obj\transform.obj']
 inputs = ["source/transform.cpp"]
 outputs = ["obj/transform.obj"]
+reference-object = "reference/obj/transform.obj"  # the original object, for rbit score
 ```
 
 ## Steps
@@ -47,6 +48,26 @@ every machine is what keeps paths a compiler embeds in its output reproducible.
 
 `rbit build` reuses a step's outputs when its program, compiler content, arguments,
 environment, prelude, register renames, inputs, headers, and runner are unchanged. `rbit verify` never uses that cache.
+
+### Reference objects and progress
+
+`reference-object` names the original object a compile step's object should equal, such as
+`reference/obj/transform.obj`. Like a target's `reference`, it stays on the owner's machine,
+and no step can read it.
+
+`rbit score` grades every function those objects define. A function is `exact` when its
+bytes and relocations equal the original's, and `reloc` when only the relocation targets or
+the bytes the linker patches differ, as when a string literal gets another generated name.
+It is `different` when the instructions differ, reported with the share of bytes that agree,
+and `missing` when the built object lacks it. `matched_percent` counts `exact` and `reloc`,
+the progress figure decompilation projects publish. A function graded `reloc` can still
+leave the linked binary different, so `rbit verify` stays the only certificate.
+`rbit score <reference> <built>` grades two objects outside a project.
+
+`rbit objdiff` writes `objdiff.json` with one unit per step that has a reference object, so
+[objdiff](https://github.com/encounter/objdiff) and `objdiff-cli report generate` read the
+same pairs. objdiff rebuilds a unit with `rbit build --quiet --object <path>`, which runs the
+incremental build and fails when no step writes that path.
 
 ### Importing steps
 
@@ -154,6 +175,29 @@ it makes the function match.
 ```toml
 rewrite = [{ addon = "msvc-4x", args = ["schedule", "--symbol", "_transform", "--order", "1,0,2,3"] }]
 ```
+
+## Behaviour checks
+
+A recompiled target, built by a newer compiler or ported to another platform, differs from
+its original byte for byte by design. A `[[check]]` compares what the two binaries do
+instead:
+
+```toml
+[[check]]
+id = "prints-usage"
+target = "program"
+run = ["rbit", "-q", "tool", "run", "wibo", "--", "${BINARY}", "/?"]  # ${BINARY} is the binary under test
+stdin = "tests/usage.txt"           # optional project file fed to standard input
+compare = ["exit", "stdout"]        # the default; stderr can be added
+timeout = 60                        # seconds per run, the default
+```
+
+`rbit behave` builds incrementally, copies the reference and then the artifact under the
+reference's file name into the same empty directory, runs the command in it, and compares
+the exit code and the SHA-256 of each named stream. A check that times out fails. The report
+shows the first 4 KiB of each stream. Agreement covers the declared inputs only, so a
+certificate of identical bytes still comes from `rbit verify` alone. The command supplies
+its own isolation, such as Wine or an emulator.
 
 ## Lock
 

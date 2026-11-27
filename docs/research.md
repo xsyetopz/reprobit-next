@@ -107,3 +107,45 @@ every platform and drops what only steered that one compiler:
   author's, so `rbit verify` reports what shaped each output (preludes, renames, add-on
   rewrites) next to the match; and where no byte match is possible, the original binary
   stays the behaviour reference, as OpenSAB keeps the SWF.
+
+## Agents and recompilation
+
+A survey on 2026-11-27 of agent harnesses for matching decompilation, recompilers, and analyzer
+servers. Licenses come from each project's page unless marked as from a secondary source.
+
+- [Ketbome/decomp-skills](https://github.com/Ketbome/decomp-skills) (MIT) wraps a PS2
+  decompilation in a `dk` tool: `dk check` compares bytes with relocations compared by symbol,
+  `dk done` refuses to commit while a function differs, `dk rescue` and `dk state` recover an
+  interrupted session, and `dk twins` copies a match onto functions with identical assembly.
+  `reprobit-coordinate` takes the twin step and the commit-per-verified-unit rule.
+- [lemiur/Game-Decompilation-Skill-For-Claude](https://github.com/lemiur/Game-Decompilation-Skill-For-Claude)
+  (CC-BY-4.0) runs matcher workers in worktrees under an orchestrator and keeps a catalogue
+  of fake matches: code that produces the bytes without the original's source.
+  `reprobit-match` lists the common ones and keeps them as drafts.
+- [Retrobench](https://retrobench.ai/) scores agents writing C for N64 functions by byte
+  match under a 25-build budget per function. `reprobit-match` uses the same budget per job.
+- [macabeus/mizuchi](https://github.com/macabeus/mizuchi) chains a model, m2c, the permuter,
+  and objdiff, retries with the failure fed back, and permutes near misses in the background.
+  Its author's benchmark of 60 functions, captured in `docs/external/`, found that a function
+  unmatched by the third attempt matched later only about one time in four, that Claude
+  resubmitted identical code 49 times, and that permuter output fed back to the model led it to
+  optimize around noise. `fnscore.py --source` reports a repeat, the match skill switches
+  strategy after 3 attempts without progress and stops at 8, and permuter results are kept
+  only when they match.
+- [maci0/rebrew](https://github.com/maci0/rebrew) (MIT, from a secondary source) grades a
+  result as EXACT, RELOC (equal after relocation), or PROVEN (equal by a bounded symbolic
+  check). `rbit verify` reports only byte identity.
+- [ethteck/coddog](https://github.com/ethteck/coddog) hashes instruction streams to find the
+  same function across binaries, such as region or version builds. A catalog candidate for
+  cross-version triage.
+- [N64Recomp](https://github.com/N64Recomp/N64Recomp) translates MIPS to C statically; its
+  result is checked by running it, not by bytes. Its license reads GPL-3.0 on the
+  organization page and MIT elsewhere; the LICENSE file settles it before any catalog entry.
+- [HexRaysSA/ida-mcp](https://github.com/HexRaysSA/ida-mcp) is Hex-Rays' own IDA MCP server,
+  which the community `ida-pro-mcp` README now points to.
+  [GhydraMCP](https://github.com/starsong-consulting/GhydraMCP) deprecates its MCP bridge in
+  favour of a `ghydra` CLI with JSON output, the shape `rbit tool run` already suits.
+- decomp.dev announced its shutdown on 2026-10-15 and cited AI-written contributions
+  ([Time Extension](https://www.timeextension.com/news/2026/10/the-community-aspect-of-decompilation-has-been-broken-decomp-dev-closes-in-the-wake-of-ai-based-bad-actors)),
+  and several projects refuse them. `reprobit-coordinate` labels agent commits with an
+  `Assisted-by:` trailer and reads a project's contribution rules before any pull request.

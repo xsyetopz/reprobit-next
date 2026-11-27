@@ -24,9 +24,11 @@ such as a mismatch), or 2 (an error).
 - **Honest matches.** A step sees only its declared inputs, never the original binary.
   `rbit verify` rebuilds from scratch and writes a report that names the compiler's content
   digest and every input and output.
-- **Agent surfaces.** A [skill](skills/reprobit/SKILL.md), a Claude Code plugin, a Codex
-  plugin, [subagents](docs/agents.md#subagents) for Claude Code and Codex, and an optional
-  MCP server (`rbit mcp`).
+- **Agent surfaces.** [Plugins](docs/agents.md) for Claude Code, Codex, Antigravity, and pi,
+  each with the same [skills](plugins/reprobit/skills) and subagents sized to that harness's
+  models, a model-free plugin for any other agent, and an optional MCP server (`rbit mcp`).
+- **Small disks.** `rbit space` lists every byte ReproBit holds and `rbit gc` frees what can be
+  fetched or rebuilt, so a project fits a 128 or 256 GB laptop. See [Disk](docs/disk.md).
 
 ## Install
 
@@ -39,11 +41,14 @@ Release binaries for each host are attached to version tags. Tools install under
 `$XDG_DATA_HOME/reprobit` on Linux, `%LOCALAPPDATA%\ReproBit` on Windows, or
 `$REPROBIT_HOME`. `rbit tool remove --all` deletes everything there.
 
-In Claude Code, the plugin brings the skill, the subagents, and the MCP server:
+In Claude Code, the plugin brings the skills, the subagents, and the MCP server:
 
-```text
-/plugin install reprobit --marketplace xsyetopz/reprobit-next
+```sh
+claude plugin marketplace add xsyetopz/reprobit-next
+claude plugin install reprobit-agents@reprobit
 ```
+
+[Agents](docs/agents.md) covers Codex, Antigravity, pi, and other harnesses.
 
 ## Use
 
@@ -56,8 +61,13 @@ rbit setup                             # install the toolchain, write reprobit.l
 rbit build                             # incremental build
 rbit diff                              # where the build differs from the original
 rbit verify                            # cold build, byte comparison, trust report
+rbit score                             # per-function grades: exact, reloc, different, missing
+rbit objdiff                           # write objdiff.json for objdiff and objdiff-cli report
+rbit behave                            # recompiled targets: same command, same output?
 rbit repair                            # after an edit, drop preludes no longer needed
 rbit import compile_commands.json      # compile steps from CMake, Ninja, Meson, or Bear
+rbit space                             # what ReproBit holds on disk, and what gc frees
+rbit gc --dry-run                      # list, then drop, downloads, scratch, and idle cache
 ```
 
 [`examples/grind`](examples/grind) is a complete MSVC 4.2 project that starts one byte
@@ -69,8 +79,10 @@ away from its original and shows `rbit grind` finding the compiler state that cl
 - [Catalog](docs/catalog.md): tool entries, fetch kinds, and adding your own catalog.
 - [Runners](docs/runners.md): how Win32 and Linux compilers run on each host.
 - [Add-ons](docs/addons.md): community rewrites per compiler, such as `msvc-4x`, and their protocol.
-- [Agents](docs/agents.md): the skill, plugins, subagents, and MCP server.
+- [Agents](docs/agents.md): the skills, plugins per harness, subagents, and MCP server.
+- [Disk](docs/disk.md): what `rbit space` reports and what `rbit gc` removes.
 - [Research notes](docs/research.md): the projects and tools this builds on.
+- [Decisions](docs/decisions.md): packaging and disk choices, with their evidence.
 
 The schemas in [`schemas/`](schemas) describe both documents for editors; `rbit schema`
 prints the same JSON Schema.

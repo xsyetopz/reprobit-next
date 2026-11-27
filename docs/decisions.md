@@ -1,0 +1,30 @@
+# Decisions
+
+Choices made while packaging the agent plugins and the disk commands, with the evidence for
+each.
+
+| Decision | Evidence |
+| --- | --- |
+| One folder per harness under `plugins/`, each with its own copy of the universal skills | Every harness installs a plugin as one folder; `cargo test -p reprobit --test plugins` keeps the copies identical |
+| MCP servers in `mcp_config.json`, named by each manifest | `agy plugin validate --strict` warns that `.mcp.json` is never loaded; Claude Code and Codex manifests take a path |
+| Claude Code plugin named `reprobit-agents` | `claude plugin validate` warned that `reprobit-claude` reads as one of Anthropic's own |
+| Claude agents pinned to `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` instead of aliases | The clawdipedia model catalog: `sonnet` and `haiku` resolve to the 4.5 models on Bedrock, Vertex, Foundry and Mantle, and every provider lists a name for each 5.5 ID; agent frontmatter accepts a full model ID |
+| Codex roles on `gpt-6-luna`, `gpt-6.2-sol` and `gpt-6.1-terra`; `gpt-6.2-astra` only as a per-spawn model for a stalled heavy job, or a whole-session profile | OpenAI's model card calls Astra the most capable model at $8 / $40 per million tokens against Sol's $2 / $10; effort levels checked against the Codex 0.171.0 model catalog |
+| Lead models ship as Codex profiles (`reprobit-sol`, `reprobit-luna`, `reprobit-astra`), not role pins | `codex --help` 0.171.0: `--profile` layers `$CODEX_HOME/<name>.config.toml`; in a scratch Codex home each profile selected its model at high effort, and this account refused Sol and Astra with "not supported when using Codex with a ChatGPT account" |
+| `.codex/litellm.yaml` and the LiteLLM profile removed | The plugins run on each harness's own sign-in; nothing needs an API key |
+| Codex matcher, writer and heavy roles inherit the lead's model | A live run on a ChatGPT account without `gpt-6.2-sol`: a role pinned to Sol failed even with a spawn `model` override; an unpinned role ran on `gpt-6-luna` at its own effort |
+| Terra only for screenshot and rendered-output checks | Codex's catalog describes it as excelling at visual understanding; its price keeps it out of the matching loop |
+| Antigravity avoids Argon and Gemini 3.8 Flash | Hydrogen, Neon and Carbon cover every role; no retirement date for the two was confirmed in `agy changelog` |
+| Universal agents name no model; `agents.example.toml` maps roles | A harness such as one serving Kimi, GLM or DeepSeek lists its own model ids |
+| Guards match disc images and ROM dumps by extension, not `.bin` | `.bin` also names ordinary data files that projects commit |
+| `m2c` installed from its git repository | PyPI's `m2c` 0.4.7 is an unrelated 2018 package |
+| `reccmp` stays on PyPI 0.1.9 | Its PyPI page links isledecomp/reccmp, and the installed package cites isledecomp/reccmp pull requests and ships `reccmp-project create` and `detect` |
+| `rbit gc` leaves runner images unless `--images` | Docker and Podman storage holds the user's other images too |
+| Match budget: switch after 3 stalled attempts, stop at 8, cap 25 builds | Mizuchi's benchmark and Retrobench's budget, in [research notes](research.md#agents-and-recompilation) |
+| `rbit score` grades functions itself instead of wrapping objdiff | It reuses the function extraction grind already trusts, needs no download, and agrees with `objdiff-cli report generate` on the grind example: not matched at 99.27% (objdiff 99.82% fuzzy) before grind, matched after |
+| `reloc` counts toward `matched_percent` but not toward `verify` | Decompilation projects count a function whose only differences are relocation targets as matched; the linked binary can still differ, so `verify` stays the certificate |
+| `rbit behave` runs a declared host command on both binaries instead of emulating them | The runner varies by target (Wine, an emulator, a recomp runtime), so the project names it; both runs share one directory and file name, so a program that prints its own path prints the same text |
+| The MCP tool list is pinned in `schemas/mcp-tools.json`, with empty `required` lists left out | Pydantic's "Engineering MCP tools for token efficiency" (2026-04-16) snapshot-tests tool schemas because every agent loads them into context. The list is 5,971 bytes for 17 tools, with no `anyOf` types to collapse; an edited description fails `the_mcp_tool_list_is_the_published_one` until `REPROBIT_BLESS=1` rewrites the file |
+| coddog 0.6.3 in the catalog from its release tarballs | The pins are the digests GitHub lists for each asset; the macOS arm64 tarball hashed to its pin, and `rbit tool run coddog -- --help` installed and ran it in a scratch home. |
+| GhydraMCP as two catalog tools: `ghidra-ghydra` (Ghidra 12.1.2 with the plugin in `Ghidra/Extensions`) and `ghydra` (its CLI and MCP bridge, pinned to the v3.0.0-rc.1 commit) | The README requires the plugin's `ghidraVersion` to equal Ghidra's, and v3.0.0-rc.1 builds only for 11.4.3 and 12.1.2, so the catalog's Ghidra 12.2 cannot host it. In a scratch home, headless Ghidra 12.1.2 loaded `eu.starsong.ghidra.GhydraPlugin` and decompiled the grind reference. With no Ghidra running, `ghydra --json instances list` answered with no instances |
+| The interactive Ghidra path is a headless import, then the GUI, then the `ghydra` CLI. The agent drives it; only Ghidra's user agreement is the user's | `GhydraPlugin` is an `ApplicationLevelPlugin`. Started with `ghidraRun <project>.gpr` and a scratch `-Dapplication.settingsdir`, it loaded with no configure step and logged `GhydraMCP HTTP server started on port 8192`. `ghydra project open-file --path /reference.obj` opened a CodeBrowser; `instances list` then showed `8192 grind reference.obj`, and `functions decompile --name transform` returned the function's C. A write of `USER_AGREEMENT=ACCEPT` into the preferences was refused, because accepting a licence is the user's consent |
