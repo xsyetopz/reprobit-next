@@ -127,6 +127,27 @@ const TOOLS: &[Spec] = &[
         ],
     ),
     (
+        "locate",
+        &["locate"],
+        "Find each function of library archives or objects in a linked binary, relocations aside: found, ambiguous, or absent.",
+        &[
+            (
+                "binary",
+                Arg::Positional,
+                "string",
+                true,
+                "Absolute path of the linked binary.",
+            ),
+            (
+                "libraries",
+                Arg::Positional,
+                "array",
+                true,
+                "Absolute paths of ar archives or objects.",
+            ),
+        ],
+    ),
+    (
         "behave",
         &["behave"],
         "Run behaviour checks: each [[check]] command against a target's reference and artifact; exit and output must agree.",

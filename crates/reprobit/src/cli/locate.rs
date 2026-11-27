@@ -1,0 +1,67 @@
+//! `rbit locate`: where a library's functions sit in a linked binary.
+
+use std::fmt::Write as _;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+
+use super::Outcome;
+use crate::library::{self, Status};
+
+pub(super) fn locate(binary: &Path, libraries: &[PathBuf]) -> Result<Outcome> {
+    let read =
+        |path: &Path| fs::read(path).with_context(|| format!("cannot read {}", path.display()));
+    let image = read(binary)?;
+    let mut objects = Vec::new();
+    for path in libraries {
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        objects.extend(library::objects(&name, &read(path)?)?);
+    }
+    let summary = library::locate(&image, &objects)?;
+    let mut text = String::new();
+    for member in &summary.members {
+        if member.linked {
+            writeln!(text, "linked     {}", member.name)?;
+            continue;
+        }
+        for item in &member.functions {
+            match (item.status, item.places) {
+                (Status::Found, _) => {}
+                (Status::Ambiguous, _) if !item.shared.is_empty() => writeln!(
+                    text,
+                    "ambiguous  {}: {} (shared with {})",
+                    member.name,
+                    item.name,
+                    item.shared.join(", ")
+                )?,
+                (Status::Ambiguous, places) => writeln!(
+                    text,
+                    "ambiguous  {}: {} ({} places)",
+                    member.name,
+                    item.name,
+                    places.unwrap_or_default()
+                )?,
+                (Status::Absent, _) => {
+                    writeln!(text, "absent     {}: {}", member.name, item.name)?;
+                }
+            }
+        }
+    }
+    writeln!(
+        text,
+        "{}/{} members linked; {} functions, {} bytes found",
+        summary.linked,
+        summary.members.len(),
+        summary.found,
+        summary.found_bytes
+    )?;
+    Ok(Outcome {
+        ok: true,
+        json: serde_json::to_value(&summary)?,
+        text,
+    })
+}

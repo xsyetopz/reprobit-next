@@ -13,6 +13,7 @@ mod fetch;
 mod grind;
 mod home;
 mod import;
+mod library;
 #[cfg(feature = "mcp")]
 mod mcp;
 mod project;

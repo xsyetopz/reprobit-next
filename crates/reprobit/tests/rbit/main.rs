@@ -14,6 +14,7 @@ use tempfile::TempDir;
 
 #[cfg(unix)]
 mod behave;
+mod locate;
 mod mcp;
 mod rewrite;
 mod score;

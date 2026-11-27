@@ -11,16 +11,16 @@ use object::{
 use super::{Run, World, succeeds};
 
 /// `mov eax, [addr]; ret`, with `addr` relocated at offset 1.
-const LOAD: &[u8] = &[0xa1, 0, 0, 0, 0, 0xc3];
+pub(crate) const LOAD: &[u8] = &[0xa1, 0, 0, 0, 0, 0xc3];
 /// `xor eax, eax; ret`
-const ZERO: &[u8] = &[0x31, 0xc0, 0xc3];
+pub(crate) const ZERO: &[u8] = &[0x31, 0xc0, 0xc3];
 /// `mov eax, 1; ret`
-const ONE: &[u8] = &[0xb8, 1, 0, 0, 0, 0xc3];
+pub(crate) const ONE: &[u8] = &[0xb8, 1, 0, 0, 0, 0xc3];
 /// `mov eax, 2; ret`
-const TWO: &[u8] = &[0xb8, 2, 0, 0, 0, 0xc3];
+pub(crate) const TWO: &[u8] = &[0xb8, 2, 0, 0, 0, 0xc3];
 
 /// A COFF i386 object of `(name, code, symbol its offset 1 loads)` functions.
-fn object(functions: &[(&str, &[u8], Option<&str>)]) -> Vec<u8> {
+pub(crate) fn object(functions: &[(&str, &[u8], Option<&str>)]) -> Vec<u8> {
     let mut object = write::Object::new(BinaryFormat::Coff, Architecture::I386, Endianness::Little);
     object.set_mangling(write::Mangling::None);
     let text = object.add_section(Vec::new(), b".text".to_vec(), SectionKind::Text);

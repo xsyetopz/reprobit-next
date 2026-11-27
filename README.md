@@ -64,6 +64,7 @@ rbit verify                            # cold build, byte comparison, trust repo
 rbit score                             # per-function grades: exact, reloc, different, missing
 rbit score --regressions               # fail only when a function that matched before stopped
 rbit objdiff                           # write objdiff.json for objdiff and objdiff-cli report
+rbit locate game.elf libsdk.a          # which library functions the binary links, and where
 rbit behave                            # recompiled targets: same command, same output?
 rbit repair                            # after an edit, drop preludes no longer needed
 rbit import compile_commands.json      # compile steps from CMake, Ninja, Meson, or Bear

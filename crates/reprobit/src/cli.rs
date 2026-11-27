@@ -11,6 +11,7 @@ use crate::catalog::Catalog;
 use crate::project::{Loaded, Project};
 
 mod behave;
+mod locate;
 mod objdiff;
 mod project;
 mod score;
@@ -148,6 +149,15 @@ pub(crate) enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
+    /// Find where each function of a library's objects sits in a linked binary, relocated
+    /// fields aside, so library code counts apart from decompiled code
+    Locate {
+        /// The linked binary to search.
+        binary: PathBuf,
+        /// `ar` archives (`.a`, `.lib`) or objects whose functions to find.
+        #[arg(required = true)]
+        libraries: Vec<PathBuf>,
+    },
     /// After a source edit, drop each saved prelude the build no longer needs.
     Repair {
         /// Project directory.
@@ -273,6 +283,7 @@ pub(crate) fn run(command: Command) -> Result<Outcome> {
         }),
         Command::Behave { dir, checks } => behave::behave(&Loaded::open(&dir)?, &checks),
         Command::Objdiff { dir } => objdiff::objdiff(&Loaded::open(&dir)?),
+        Command::Locate { binary, libraries } => locate::locate(&binary, &libraries),
         Command::Repair { dir } => project::repair(&Loaded::open(&dir)?),
         Command::Import { database, dir } => project::import(&database, &dir),
         Command::Clean { dir, all } => project::clean(&Loaded::open(&dir)?, all),
