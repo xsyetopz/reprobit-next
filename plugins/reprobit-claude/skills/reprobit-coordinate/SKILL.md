@@ -70,3 +70,11 @@ decompilations refuse AI-written code; then keep the work local and tell the use
 
 Report matched functions and bytes against the total, game code apart from library code
 that came from original library objects.
+
+- `rbit --json locate <binary> <archive or object>...` finds each library function in the
+  binary with relocated fields masked. Each one is `found` at an address, `ambiguous`, or
+  `absent`, and a member is `linked` when all its functions are found.
+- Take the functions of linked members off the decompilation queue: link those objects
+  instead.
+- An `ambiguous` function shares its bytes with another place or member, as a `w` variant
+  does with its base function. Confirm it from a call site, or decompile it.
