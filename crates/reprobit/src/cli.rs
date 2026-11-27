@@ -157,6 +157,9 @@ pub(crate) enum Command {
         /// `ar` archives (`.a`, `.lib`) or objects whose functions to find.
         #[arg(required = true)]
         libraries: Vec<PathBuf>,
+        /// Also list members with no function placed.
+        #[arg(long)]
+        all: bool,
     },
     /// After a source edit, drop each saved prelude the build no longer needs.
     Repair {
@@ -283,7 +286,11 @@ pub(crate) fn run(command: Command) -> Result<Outcome> {
         }),
         Command::Behave { dir, checks } => behave::behave(&Loaded::open(&dir)?, &checks),
         Command::Objdiff { dir } => objdiff::objdiff(&Loaded::open(&dir)?),
-        Command::Locate { binary, libraries } => locate::locate(&binary, &libraries),
+        Command::Locate {
+            binary,
+            libraries,
+            all,
+        } => locate::locate(&binary, &libraries, all),
         Command::Repair { dir } => project::repair(&Loaded::open(&dir)?),
         Command::Import { database, dir } => project::import(&database, &dir),
         Command::Clean { dir, all } => project::clean(&Loaded::open(&dir)?, all),

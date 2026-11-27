@@ -30,7 +30,7 @@ fn archive(members: &[(&str, Vec<u8>)]) -> Vec<u8> {
 
 /// Runs `rbit locate` on an image whose code is
 /// `cc×4, _load (operand filled), _two, _zero, cc, _zero, cc`.
-fn locate() -> Run {
+fn locate(extra: &[&str]) -> Run {
     let world = World::new();
     let filled: &[u8] = &[0xa1, 0x78, 0x56, 0x34, 0x12, 0xc3];
     let code = [&[0xcc; 4][..], filled, TWO, ZERO, &[0xcc], ZERO, &[0xcc]].concat();
@@ -48,7 +48,9 @@ fn locate() -> Run {
         ("c.obj", object(&[("_zero", ZERO, None)])),
     ]);
     fs::write(world.project().join("sdk.a"), library).expect("library");
-    world.rbit(&["locate", "image.obj", "sdk.a"])
+    let mut args = vec!["locate", "image.obj", "sdk.a"];
+    args.extend(extra);
+    world.rbit(&args)
 }
 
 fn function<'a>(run: &'a Run, member: &str, name: &str) -> &'a serde_json::Value {
@@ -93,7 +95,7 @@ fn locate_in(code: &[u8], members: &Members<'_>) -> Run {
 /// LOCATE-1: a function placed once is found at its address despite its filled relocation.
 #[test]
 fn locate_finds_a_function_placed_once_at_its_address() {
-    let run = locate();
+    let run = locate(&[]);
     let load = function(&run, "a.obj", "_load");
     assert_eq!(
         (&load["status"], &load["address"]),
@@ -104,7 +106,7 @@ fn locate_finds_a_function_placed_once_at_its_address() {
 /// LOCATE-2: a member is linked only when every function it defines is found.
 #[test]
 fn locate_counts_a_member_linked_only_when_all_its_functions_are_found() {
-    let run = locate();
+    let run = locate(&["--all"]);
     assert_eq!(function(&run, "a.obj", "_two")["address"], 10);
     assert_eq!(function(&run, "b.obj", "_one")["status"], "absent");
     assert_eq!(
@@ -117,7 +119,7 @@ fn locate_counts_a_member_linked_only_when_all_its_functions_are_found() {
 /// LOCATE-3: a function at several places is ambiguous, and its member is not linked.
 #[test]
 fn locate_reports_a_function_at_several_places_as_ambiguous() {
-    let run = locate();
+    let run = locate(&[]);
     let zero = function(&run, "c.obj", "_zero");
     assert_eq!(
         (&zero["status"], &zero["places"]),
@@ -166,4 +168,18 @@ fn locate_gives_a_shared_place_only_to_a_member_found_in_full() {
         (&"ambiguous".into(), &"ambiguous".into())
     );
     assert_eq!(twins.json["linked"], 0);
+}
+
+/// LOCATE-5: without `--all`, a member with nothing placed is counted, not listed.
+#[test]
+fn locate_counts_members_with_nothing_placed_instead_of_listing_them() {
+    let run = locate(&[]);
+    let listed: Vec<&str> = succeeds(&run)["members"]
+        .as_array()
+        .expect("members")
+        .iter()
+        .filter_map(|item| item["member"].as_str())
+        .collect();
+    assert_eq!(listed, ["a.obj", "c.obj"]);
+    assert_eq!(run.json["unplaced"], 1);
 }

@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use super::Outcome;
 use crate::library::{self, Status};
 
-pub(super) fn locate(binary: &Path, libraries: &[PathBuf]) -> Result<Outcome> {
+pub(super) fn locate(binary: &Path, libraries: &[PathBuf], all: bool) -> Result<Outcome> {
     let read =
         |path: &Path| fs::read(path).with_context(|| format!("cannot read {}", path.display()));
     let image = read(binary)?;
@@ -21,7 +21,7 @@ pub(super) fn locate(binary: &Path, libraries: &[PathBuf]) -> Result<Outcome> {
         );
         objects.extend(library::objects(&name, &read(path)?)?);
     }
-    let summary = library::locate(&image, &objects)?;
+    let summary = library::locate(&image, &objects, all)?;
     let mut text = String::new();
     for member in &summary.members {
         if member.linked {
@@ -53,9 +53,10 @@ pub(super) fn locate(binary: &Path, libraries: &[PathBuf]) -> Result<Outcome> {
     }
     writeln!(
         text,
-        "{}/{} members linked; {} functions, {} bytes found",
+        "{}/{} members linked, {} with nothing placed; {} functions, {} bytes found",
         summary.linked,
-        summary.members.len(),
+        summary.members.len() + summary.unplaced,
+        summary.unplaced,
         summary.found,
         summary.found_bytes
     )?;

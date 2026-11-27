@@ -145,6 +145,13 @@ const TOOLS: &[Spec] = &[
                 true,
                 "Absolute paths of ar archives or objects.",
             ),
+            (
+                "all",
+                Arg::Switch,
+                "boolean",
+                false,
+                "Also list members with no function placed.",
+            ),
         ],
     ),
     (

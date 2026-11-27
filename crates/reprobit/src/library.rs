@@ -58,6 +58,8 @@ pub(crate) struct Summary {
     pub(crate) linked: usize,
     pub(crate) found: usize,
     pub(crate) found_bytes: usize,
+    /// Members left out of `members` because none of their functions was placed.
+    pub(crate) unplaced: usize,
 }
 
 /// The objects in `bytes`: each member of an `ar` archive, or the object itself.
@@ -79,8 +81,10 @@ pub(crate) fn objects(name: &str, bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>
 }
 
 /// Finds each function of `objects` in the code sections of `binary`. A member that is
-/// not an object, such as an import stub, or defines no function, is left out.
-pub(crate) fn locate(binary: &[u8], objects: &[(String, Vec<u8>)]) -> Result<Summary> {
+/// not an object, such as an import stub, or defines no function, is left out. Unless
+/// `all`, so is a member with nothing `found` or `ambiguous`: a vendor archive holds
+/// hundreds of objects a binary never links, and listing them buries the ones it does.
+pub(crate) fn locate(binary: &[u8], objects: &[(String, Vec<u8>)], all: bool) -> Result<Summary> {
     let file = object::File::parse(binary).context("cannot read the binary")?;
     let code = file
         .sections()
@@ -138,6 +142,16 @@ pub(crate) fn locate(binary: &[u8], objects: &[(String, Vec<u8>)]) -> Result<Sum
             .iter()
             .all(|item| item.status == Status::Found);
     }
+    let before = members.len();
+    if !all {
+        members.retain(|member| {
+            member
+                .functions
+                .iter()
+                .any(|item| item.status != Status::Absent)
+        });
+    }
+    let unplaced = before - members.len();
     let found = members
         .iter()
         .flat_map(|member| &member.functions)
@@ -146,6 +160,7 @@ pub(crate) fn locate(binary: &[u8], objects: &[(String, Vec<u8>)]) -> Result<Sum
         linked: members.iter().filter(|member| member.linked).count(),
         found: found.clone().count(),
         found_bytes: found.map(|item| item.size).sum(),
+        unplaced,
         members,
     })
 }

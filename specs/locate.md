@@ -18,7 +18,7 @@ Then `_load` is `found` at address 4
 A member counts as `linked` only when every function it defines is `found`.
 
 Given members `a.obj` with both functions in the binary and `b.obj` whose function is not
-When `rbit locate` runs
+When `rbit locate --all` runs
 Then `a.obj` is linked, `b.obj` is not, its function is `absent`, and the summary counts 1 linked
 
 ## LOCATE-3 Ambiguous places
@@ -40,3 +40,11 @@ Then the `p.obj` function is `found`, the `q.obj` one is `ambiguous` and lists `
 Given two one-function members `x.obj` and `y.obj` with the same bytes, placed once
 When `rbit locate` runs
 Then both functions are `ambiguous` and neither member is linked
+
+## LOCATE-5 Unplaced members are counted, not listed
+
+Without `--all`, a member with no function `found` or `ambiguous` is left out of `members` and counted under `unplaced`.
+
+Given members `a.obj` with both functions in the binary and `b.obj` whose function is not
+When `rbit locate` runs without `--all`
+Then `members` holds `a.obj` and not `b.obj`, and `unplaced` is 1

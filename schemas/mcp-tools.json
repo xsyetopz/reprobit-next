@@ -125,6 +125,10 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "all": {
+          "description": "Also list members with no function placed.",
+          "type": "boolean"
+        },
         "binary": {
           "description": "Absolute path of the linked binary.",
           "type": "string"
