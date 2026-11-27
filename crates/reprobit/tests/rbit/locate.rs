@@ -183,3 +183,21 @@ fn locate_counts_members_with_nothing_placed_instead_of_listing_them() {
     assert_eq!(listed, ["a.obj", "c.obj"]);
     assert_eq!(run.json["unplaced"], 1);
 }
+
+/// LOCATE-5: without `--all`, a listed member counts its absent functions.
+#[test]
+fn locate_counts_a_listed_members_absent_functions() {
+    let code = [&[0xcc][..], ONE, &[0xcc]].concat();
+    let run = locate_in(
+        &code,
+        &[("q.obj", &[("_q", ONE, None), ("_z", ZERO, None)])],
+    );
+    let member = &succeeds(&run)["members"][0];
+    let names: Vec<&str> = member["functions"]
+        .as_array()
+        .expect("functions")
+        .iter()
+        .filter_map(|item| item["name"].as_str())
+        .collect();
+    assert_eq!((names, &member["absent"]), (vec!["_q"], &1.into()));
+}

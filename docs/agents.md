@@ -107,6 +107,12 @@ because a ChatGPT plan serves only some models (`codex debug models` lists them)
 file's `model` wins over the spawn's: a ChatGPT account without Sol failed every spawn of a
 role pinned to it, and the same role without a pin ran on the lead's `gpt-6-luna` at the
 role's effort. Terra is priced high for coding work, so it stays out of the default loop.
+
+A headless `codex exec` runs with approval policy `never`, so it refuses every MCP tool call
+with "MCP tool call requires approval". Pre-approve the server's tools for that run with
+`-c 'mcp_servers.reprobit.default_tools_approval_mode="approve"'`. Codex 0.171.0 also accepts
+`auto`, `prompt` and `writes` there. `approve` also covers `gc` and `clean`, so give it only
+to runs whose prompt you wrote.
 `gpt-6.2-astra`, the most capable model at four times Sol's price, is the last tier for one
 function: the lead spawns `reprobit_heavy` with `model="gpt-6.2-astra"` after a heavy job on
 its own model ended at the `DIFF N` it started from.

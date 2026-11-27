@@ -43,8 +43,12 @@ Then both functions are `ambiguous` and neither member is linked
 
 ## LOCATE-5 Unplaced members are counted, not listed
 
-Without `--all`, a member with no function `found` or `ambiguous` is left out of `members` and counted under `unplaced`.
+Without `--all`, a member with no function `found` or `ambiguous` is left out of `members` and counted under `unplaced`, and a listed member gives its absent functions as a count.
 
 Given members `a.obj` with both functions in the binary and `b.obj` whose function is not
 When `rbit locate` runs without `--all`
 Then `members` holds `a.obj` and not `b.obj`, and `unplaced` is 1
+
+Given member `q.obj` with one function found and one absent
+When `rbit locate` runs without `--all`
+Then `q.obj` lists only the found function and has `absent` 1

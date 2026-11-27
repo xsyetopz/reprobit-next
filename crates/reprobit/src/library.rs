@@ -49,6 +49,17 @@ pub(crate) struct Member {
     /// Every function the object defines is `found`.
     pub(crate) linked: bool,
     pub(crate) functions: Vec<Placed>,
+    /// Absent functions left out of `functions`, without `--all`.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub(crate) absent: usize,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+const fn is_zero(count: &usize) -> bool {
+    *count == 0
 }
 
 /// Every object's results and the totals.
@@ -133,6 +144,7 @@ pub(crate) fn locate(binary: &[u8], objects: &[(String, Vec<u8>)], all: bool) ->
             name: member.clone(),
             linked: false,
             functions,
+            absent: 0,
         });
     }
     share(&mut members);
@@ -150,6 +162,13 @@ pub(crate) fn locate(binary: &[u8], objects: &[(String, Vec<u8>)], all: bool) ->
                 .iter()
                 .any(|item| item.status != Status::Absent)
         });
+        for member in &mut members {
+            let before = member.functions.len();
+            member
+                .functions
+                .retain(|item| item.status != Status::Absent);
+            member.absent = before - member.functions.len();
+        }
     }
     let unplaced = before - members.len();
     let found = members

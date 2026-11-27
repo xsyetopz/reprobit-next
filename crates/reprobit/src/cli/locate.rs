@@ -28,9 +28,26 @@ pub(super) fn locate(binary: &Path, libraries: &[PathBuf], all: bool) -> Result<
             writeln!(text, "linked     {}", member.name)?;
             continue;
         }
+        let count = |status: Status| {
+            member
+                .functions
+                .iter()
+                .filter(|item| item.status == status)
+                .count()
+        };
+        // One line per partly placed member: a member's absent functions, one per line,
+        // made up most of a vendor archive's report.
+        writeln!(
+            text,
+            "partial    {}: {} of {} found, {} absent",
+            member.name,
+            count(Status::Found),
+            member.functions.len() + member.absent,
+            count(Status::Absent) + member.absent
+        )?;
         for item in &member.functions {
             match (item.status, item.places) {
-                (Status::Found, _) => {}
+                (Status::Found | Status::Absent, _) => {}
                 (Status::Ambiguous, _) if !item.shared.is_empty() => writeln!(
                     text,
                     "ambiguous  {}: {} (shared with {})",
@@ -45,9 +62,6 @@ pub(super) fn locate(binary: &Path, libraries: &[PathBuf], all: bool) -> Result<
                     item.name,
                     places.unwrap_or_default()
                 )?,
-                (Status::Absent, _) => {
-                    writeln!(text, "absent     {}: {}", member.name, item.name)?;
-                }
             }
         }
     }
