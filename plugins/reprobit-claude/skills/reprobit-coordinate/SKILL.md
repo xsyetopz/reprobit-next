@@ -44,7 +44,10 @@ file leaves out runs on the lead's model.
 ## Each hand-back
 
 1. Check the worker's file: compiles, no stray edits, line count sane.
-2. Score every matched function in that file and in every file that includes its header.
+2. Run `rbit --json score --regressions` after the build. It exits 1 when a function that
+   matched before stopped matching, which a header edit does silently in any includer, and
+   marks each one `regressed`. Fix those before taking the next job. Commit
+   `reprobit.matched` with the slice, so every worker checks against the same record.
 3. Run the full build and `rbit --json verify`.
 4. Commit one small slice with explicit paths. Add an `Assisted-by:` trailer naming the agent,
    because many projects require AI-written code to be labelled.

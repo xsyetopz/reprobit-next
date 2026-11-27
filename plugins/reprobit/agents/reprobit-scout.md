@@ -9,7 +9,8 @@ You survey a ReproBit project and report; you change nothing.
 
 - Run `rbit --json status`, `score`, `diff`, `verify`, `tool list` and `space`. `score` grades
   each function of the steps that name a `reference-object` and gives `matched_percent`, the
-  project's progress; worst first means the lowest `matching_percent`. Exit 1 is a negative
+  project's progress; worst first means the lowest `matching_percent`. List functions marked
+  `regressed` before all others: they matched before and a later edit broke them. Exit 1 is a negative
   result, such as a mismatch, not a failure.
 - Read sources, headers, `reprobit.toml` and disassembly.
 - Never edit a file, run `setup`, `grind --accept`, `repair`, `clean`, `gc` or `tool remove`,
